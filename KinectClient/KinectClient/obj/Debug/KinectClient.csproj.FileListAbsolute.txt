@@ -1,0 +1,10 @@
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\bin\Debug\KinectClient.exe.config
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\bin\Debug\KinectClient.exe
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\bin\Debug\KinectClient.pdb
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\bin\Debug\Microsoft.Kinect.dll
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\bin\Debug\Microsoft.Kinect.xml
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.AssemblyReference.cache
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.CoreCompileInputs.cache
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\obj\Debug\KinectClient.exe
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\obj\Debug\KinectClient.pdb
+C:\Users\yiyu\source\repos\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.CopyComplete
