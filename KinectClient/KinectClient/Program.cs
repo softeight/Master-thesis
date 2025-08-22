@@ -12,32 +12,24 @@ namespace KinectClient
 {
     class Program
     {
-
         static void Main(string[] args)
         {
-            //initialise udp client instance & set endpoint
-            UdpClient udpclient = new UdpClient();
-            IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 3363);
-            udpclient.Connect(endPoint);
+            //initialise tcp listener instance & set endpoint
+
+            var listner = new TcpListener(IPAddress.Loopback, 3363);
+            listner.Start();
 
             //initialize the camera sensor
-            KinectSensor kinectSensor = null;
-            CameraSpacePoint[] cameraSpacePoints = new CameraSpacePoint[512 * 424];
-            ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[512 * 424];
-            MultiSourceFrameReader reader = null;
-            CoordinateMapper mapper; 
-
+            KinectSensor kinectSensor = null;          
+            MultiSourceFrameReader reader = null;          
            
             //create empty array to store 
             byte[] color_data = new byte[1920 * 1080 * 4];
             ushort[] depth_data = new ushort[512 * 424];
             byte[] body_index_data = new byte[512 * 424];
 
-            //
-            short point_max_count = 200;
-            byte[] packet_buffer = new byte[6 * point_max_count];
-            int count = 0;
-
+            byte[] packet_buffer = new byte[7 * 512 * 424];           
+           
 
             //get thw kinectSensor object
             kinectSensor = KinectSensor.GetDefault();
@@ -46,92 +38,99 @@ namespace KinectClient
             //open the reader for the depth & color frames
             reader = kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
 
-            Console.WriteLine("Sending packages...");
+
             while (true)
             {
-                MultiSourceFrame msf = reader.AcquireLatestFrame();
-                if (msf == null)
-                {
-                    //Console.WriteLine("No MultiSourceFrame, skipping...");                
+                Console.WriteLine("Waiting for client...");
 
-                    continue;
-                }             
-                  
-                using(var df = msf.DepthFrameReference.AcquireFrame())
+                TcpClient client = listner.AcceptTcpClient();
+                NetworkStream ns = client.GetStream();
+
+                Console.WriteLine("Sending packages...");
+
+                while (true)
                 {
-                    if(df != null)
+                    //getting depth&color&bodyIdx frame from kinect
+                    MultiSourceFrame msf = reader.AcquireLatestFrame();
+                    if (msf == null)
                     {
-                        df.CopyFrameDataToArray(depth_data);
+                        //Console.WriteLine("No MultiSourceFrame, skipping...");                
+
+                        continue;
                     }
-                }
 
-                using (var cf = msf.ColorFrameReference.AcquireFrame())
-                {
-                    if (cf != null)
+                    using (var df = msf.DepthFrameReference.AcquireFrame())
                     {
-                        cf.CopyConvertedFrameDataToArray(color_data, ColorImageFormat.Rgba);
-                    }
-                }
-
-                using (var bif = msf.BodyIndexFrameReference.AcquireFrame())
-                {
-                    if (bif != null)
-                    {
-                        bif.CopyFrameDataToArray(body_index_data);
-                    }
-                }
-
-
-                //mapping color data to 3d camera space coordinates
-                mapper = kinectSensor.CoordinateMapper;
-                //mapper.MapColorFrameToCameraSpace(depth_data, cameraSpacePoints);
-                mapper.MapDepthFrameToCameraSpace(depth_data, cameraSpacePoints);
-                //mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
-
-                //for (int i = 0; i < cameraSpacePoints.Length; i++)
-                //{
-                for(int x = 0; x < 512; x+=1)
-                {
-                    for(int y = 0; y < 424; y+=1)
-                    {
-                        
-                        int i = y * 512 + x;
-
-                        CameraSpacePoint p = cameraSpacePoints[i];                 
-
-                        if (float.IsInfinity(p.X) || float.IsInfinity(p.Y) ||
-                            float.IsInfinity(p.Z) || p.Z > 3 || body_index_data[i] > 5) continue;
-                        short comp_x = (short)(p.X * 1000f);
-                        byte[] posX = BitConverter.GetBytes(comp_x); //2 byte
-                        Array.ConstrainedCopy(posX, 0, packet_buffer, count*6, 2);
-                        short comp_y = (short)(p.Y * 1000f);
-                        byte[] posY = BitConverter.GetBytes(comp_y); //2byte
-                        Array.ConstrainedCopy(posY, 0, packet_buffer, count*6 + 2, 2);
-                        short comp_z = (short)(p.Z * 1000f);
-                        byte[] posZ = BitConverter.GetBytes(comp_z); //2byte
-                        Array.ConstrainedCopy(posZ, 0, packet_buffer, count*6 + 4, 2);
-                        
-                        count++;
-
-
-                        if(count == point_max_count)
+                        if (df != null)
                         {
-                            try
-                            {
-                                udpclient.Send(packet_buffer, packet_buffer.Length);
-                                //Console.WriteLine("send sucucess");
-                                count = 0;
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine(ex.ToString());
-                            }
+                            df.CopyFrameDataToArray(depth_data);
                         }
-                       
                     }
-                }                                    
+
+                    using (var cf = msf.ColorFrameReference.AcquireFrame())
+                    {
+                        if (cf != null)
+                        {
+                            cf.CopyConvertedFrameDataToArray(color_data, ColorImageFormat.Rgba);
+                        }
+                    }
+
+                    using (var bif = msf.BodyIndexFrameReference.AcquireFrame())
+                    {
+                        if (bif != null)
+                        {
+                            bif.CopyFrameDataToArray(body_index_data);
+                        }
+                    }
+
+                    //writing each pixel data into packet buffer
+                    for (int y = 0; y < 424; y++)
+                    {
+                        for (int x = 0; x < 512; x++)
+                        {
+
+                            int i = y * 512 + x;
+
+                            int color_x = x * 1920 / 512;
+                            int color_y = y * 1080 / 424;
+                            int color_index = (color_y * 1920 + color_x) * 4;
+
+                            //get rgba & d & bodyIndex value
+                            byte r = color_data[color_index];
+                            byte g = color_data[color_index + 1];
+                            byte b = color_data[color_index + 2];
+                            byte a = color_data[color_index + 3];
+
+                            ushort depth_value = depth_data[i];
+                            byte[] d = BitConverter.GetBytes(depth_value);
+
+                            byte bodyID = body_index_data[i];
+
+                            //write rgba & d & bodyIndex into the buffer
+                            //int baseIdx = (i % (max_payload / 7)) * 7;
+                            packet_buffer[i * 7] = r;
+                            packet_buffer[i * 7 + 1] = g;
+                            packet_buffer[i * 7 + 2] = b;
+                            packet_buffer[i * 7 + 3] = a;
+                            Array.ConstrainedCopy(d, 0, packet_buffer, i * 7 + 4, 2);
+                            packet_buffer[i * 7 + 6] = bodyID;
 
 
+                        }
+                    }
+
+                    try
+                    {
+                        ns.Write(packet_buffer, 0, 7 * 512 * 424);
+                        ns.Flush();
+                        Console.WriteLine("Write success");
+                    }
+                    catch(System.IO.IOException ex)
+                    {
+                        Console.WriteLine("Client disconnected.");
+                        break;
+                    }
+                }
 
             }
 
