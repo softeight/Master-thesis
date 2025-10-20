@@ -293,7 +293,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2.01, y: 3.65, z: -5.05}
+  m_LocalPosition: {x: 0, y: 0, z: -5.05}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -347,5 +347,3 @@ MonoBehaviour:
   serverIp: 127.0.0.1
   serverPort: 3363
   pointPrefab: {fileID: 7960682750950214405, guid: 8c1ef7c7951a0574e942e89b0cd92881, type: 3}
-  rows: 512
-  cols: 424
