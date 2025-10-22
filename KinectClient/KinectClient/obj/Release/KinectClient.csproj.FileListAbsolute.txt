@@ -1,0 +1,10 @@
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\bin\Release\KinectClient.exe.config
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\bin\Release\KinectClient.exe
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\bin\Release\KinectClient.pdb
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\bin\Release\Microsoft.Kinect.dll
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\bin\Release\Microsoft.Kinect.xml
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.csproj.AssemblyReference.cache
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.csproj.CoreCompileInputs.cache
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.csproj.CopyComplete
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.exe
+C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.pdb

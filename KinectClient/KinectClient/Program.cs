@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Kinect;
 using System.Drawing;
+using System.Diagnostics;
 
 
 
@@ -26,14 +27,15 @@ namespace KinectClient
             KinectSensor kinectSensor = null;          
             MultiSourceFrameReader reader = null;
             CoordinateMapper mapper = null;
-           
-            //create empty array to store 
-            byte[] color_data = new byte[1920 * 1080 * 4];
-            ushort[] depth_data = new ushort[512 * 424];
-            byte[] body_index_data = new byte[512 * 424];
 
-            byte[] packet_buffer = new byte[7 * 512 * 424];
-            ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[512*424];
+            //create empty array to store 
+            int pixel_count = 512 * 424;
+            byte[] color_data = new byte[1920 * 1080 * 4];          
+            ushort[] depth_data = new ushort[pixel_count];
+            byte[] body_index_data = new byte[pixel_count];
+
+            byte[] packet_buffer = new byte[(7 * pixel_count) + 8];
+            ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
            
 
             //get thw kinectSensor object
@@ -43,6 +45,11 @@ namespace KinectClient
             //open the reader for the depth & color frames
             reader = kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
 
+            //long sum = 0;
+            //int count = 0;
+            //Stopwatch sw = new Stopwatch();
+            
+            int header = 8;
             
             while (true)
             {
@@ -55,6 +62,7 @@ namespace KinectClient
 
                 while (true)
                 {
+                    //sw.Start();
                     //getting depth&color&bodyIdx frame from kinect
                     MultiSourceFrame msf = reader.AcquireLatestFrame();
                     if (msf == null)
@@ -90,14 +98,16 @@ namespace KinectClient
 
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
+
+
                     //writing each pixel data into packet buffer
-                    //for (int x = 0; x < 512; x++)                      
-                    //{
+                    
+                    
                     Parallel.For(0, 512, x =>
                     {
                         for (int y = 0; y < 424; y++)
                         {
-                        
+
                             float v = y / (float)424;
 
                             int i = y * 512 + x;
@@ -121,36 +131,42 @@ namespace KinectClient
                                 byte bodyID = body_index_data[i];
 
                                 //write rgba & d & bodyIndex into the buffer
-                                packet_buffer[(i * 7)] = r;
-                                packet_buffer[(i * 7) + 1] = g;
-                                packet_buffer[(i * 7) + 2] = b;
-                                packet_buffer[(i * 7) + 3] = a;
-                                Array.ConstrainedCopy(d, 0, packet_buffer, (i * 7) + 4, 2);
-                                packet_buffer[(i * 7) + 6] = bodyID;
+                                packet_buffer[(i * 7)+header] = r;
+                                packet_buffer[(i * 7) + 1+header] = g;
+                                packet_buffer[(i * 7) + 2+header] = b;
+                                packet_buffer[(i * 7) + 3+header] = a;
+                                Array.ConstrainedCopy(d, 0, packet_buffer, (i * 7) + 4+header, 2);
+                                packet_buffer[(i * 7) + 6+header] = bodyID;
 
                                 //testpic.SetPixel(x, y, Color.FromArgb(r, g, b));
                             }
                             else
                             {
-                                packet_buffer[i * 7 + 0] = 0;
-                                packet_buffer[i * 7 + 1] = 0;
-                                packet_buffer[i * 7 + 2] = 0;
-                                packet_buffer[i * 7 + 3] = 255;
-                                packet_buffer[i * 7 + 4] = 0;
-                                packet_buffer[i * 7 + 5] = 0;
-                                packet_buffer[i * 7 + 6] = 255;
+                                packet_buffer[i * 7 + header] = 0;
+                                packet_buffer[i * 7 + 1 + header] = 0;
+                                packet_buffer[i * 7 + 2 + header] = 0;
+                                packet_buffer[i * 7 + 3 + header] = 255;
+                                packet_buffer[i * 7 + 4 + header] = 0;
+                                packet_buffer[i * 7 + 5 + header] = 0;
+                                packet_buffer[i * 7 + 6 + header] = 255;
                                 //testpic.SetPixel(x, y, Color.Black);
                             }
                         }
                     });
-                       
-                    //}
-                    //testpic.Save(@"C:\Users\yiyu\Documents\uni\Master\output_cm.png", System.Drawing.Imaging.ImageFormat.Png);
+
+                   
+
+
+
                     try
                     {
-                        ns.Write(packet_buffer, 0, 7 * 512 * 424);
+                        long timestamp = DateTime.UtcNow.Ticks;
+                        byte[] time_bytes = BitConverter.GetBytes(timestamp);
+                        Buffer.BlockCopy(time_bytes, 0, packet_buffer, 0, header);
+                        ns.Write(packet_buffer, 0, packet_buffer.Length);
                         ns.Flush();
-                        //Console.WriteLine("Write success");
+                       
+
                     }
                     catch (System.IO.IOException ex)
                     {

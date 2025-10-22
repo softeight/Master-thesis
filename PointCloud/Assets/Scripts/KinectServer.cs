@@ -11,6 +11,7 @@ using System.Linq;
 using Unity.VisualScripting;
 using static UnityEditor.PlayerSettings;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 
 public class KinectServer : MonoBehaviour
@@ -30,14 +31,16 @@ public class KinectServer : MonoBehaviour
     public GameObject pointPrefab;
     public static List<GameObject> Points = new List<GameObject>();
     private List<PointInfo> pointInfos;
-    
+
     private byte[] packet_buffer;
 
     public const int rows = 424;
     public const int cols = 512;
     private int bufferSize;
-    private bool isReading = false;
-    private object _lock = new object();
+
+    public int header = 8;
+    //public long timestamp;
+    //public DateTime receivedTime;
 
     //public Texture2D texture;
 
@@ -45,12 +48,16 @@ public class KinectServer : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        bufferSize = 7 * rows * cols;
+        if (!Application.isPlaying)
+            return;
+
+        bufferSize = (7 * rows * cols) + header;
         packet_buffer = new byte[bufferSize];
         client = new TcpClient();
 
         Points = Enumerable.Range(0, rows * cols)
-            .Select(i => {
+            .Select(i =>
+            {
                 var obj = Instantiate(pointPrefab, new Vector3(), Quaternion.identity, this.transform);
                 obj.name = $"Point {i}";
                 return obj;
@@ -60,10 +67,13 @@ public class KinectServer : MonoBehaviour
         pointInfos = Enumerable.Range(0, rows * cols)
             .Select(_ => new PointInfo())
             .ToList();
+
+        this.StartCoroutine(this.ReadFrame());
     }
 
     void OnDisable()
     {
+        this.StopAllCoroutines();
         client?.Dispose();
 
         foreach (GameObject obj in Points)
@@ -74,152 +84,96 @@ public class KinectServer : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (!client.Connected)
-        {
-            Debug.Log("Connecting...");
-            client.Connect(serverIp, serverPort);
-            client.NoDelay = true;
-            client.ReceiveBufferSize = bufferSize;
-            stream = client.GetStream();
-            Debug.Log("Connected.");
-        }
-
-        if(isReading || !stream.DataAvailable)
-            return;
-
-        //get the received data according to its format/sequence
-        try
-        {
-            isReading = true;
-            stream.BeginRead(packet_buffer, 0, bufferSize, UpdatePointsCallback, null);
-        }
-        catch (Exception e) {
-            Debug.LogException(e);
-            client.Dispose();
-            client = new TcpClient();
-            return;
-        }
-
+       
         //texture = new Texture2D(512, 424, TextureFormat.RGBA32, false);
-        lock (_lock)
+        for (int x = 0; x < cols; x++)//cols = 512           
         {
-            for (int x = 0; x < cols; x++)//cols = 512           
+            for (int y = 0; y < rows; y++) //rows = 424
             {
-                for (int y = 0; y < rows; y++) //rows = 424
+                int i = y * cols + x;
+                var point = Points[i];
+                var pointInf = pointInfos[i];
+
+                if (!pointInf.active)
                 {
-                    int i = y * cols + x;
-                    var point = Points[i];
-                    var pointInf = pointInfos[i];
-                    
-
-                    if (!pointInf.active)
-                    {
-                        point.SetActive(false);
-                        continue;
-                    }
-
-
-                    Color color = pointInf.color;
-                    Vector3 pos = pointInf.position;
-                    //texture.SetPixel(x, y, color);
-
-                    point.transform.position = pos;
-                    point.SetActive(true);
-
-                    Renderer rend = point.GetComponent<Renderer>();
-                    rend.material.color = color;
+                    point.SetActive(false);
+                    continue;
                 }
+              
+                point.transform.position = pointInf.position;
+                point.SetActive(true);
+
+                Renderer rend = point.GetComponent<Renderer>();
+                rend.material.color = pointInf.color;
             }
-            //byte[] bytes = texture.EncodeToPNG();
-            //System.IO.File.WriteAllBytes(Application.dataPath + "/output_cm.png", bytes);
         }
+       
+        //DateTime now = DateTime.UtcNow;
+        //long elapsedTicks = now.Ticks - receivedTime.Ticks;
+        //TimeSpan latency = new TimeSpan(elapsedTicks);
+        //UnityEngine.Debug.Log($"from receiving to points created:{latency.TotalMilliseconds}ms"); //100-200ms
 
     }
 
-    private void UpdatePointsCallback(IAsyncResult result)
+    private IEnumerator ReadFrame()
     {
-        if (!result.IsCompleted)
+        while (true)
         {
-            Debug.LogError("TCP stream read did not complete.");
-            client.Dispose();
-            client = new TcpClient();
-            return;
-        }
+            if (!client.Connected)
+            {
+                UnityEngine.Debug.Log("Connecting...");
+                client.Connect(serverIp, serverPort);
+                client.NoDelay = true;
+                client.ReceiveBufferSize = bufferSize;
+                stream = client.GetStream();
+                UnityEngine.Debug.Log("Connected.");
+            }
 
-        lock (_lock)
-        {
+            while (!stream.DataAvailable)
+                yield return new WaitForEndOfFrame();
+
+            //get the received data according to its format/sequence
+            var result = stream.BeginRead(packet_buffer, 0, bufferSize, null, null);
+
+            while (!result.IsCompleted)
+                yield return new WaitForEndOfFrame();
+
             int readBytes = stream.EndRead(result);
-            isReading = false;
 
             if (readBytes != bufferSize)
             {
-                Debug.LogErrorFormat("Expected {0} bytes but only received {1}.", bufferSize, readBytes);
-                return;
+                UnityEngine.Debug.LogErrorFormat("Expected {0} bytes but only received {1}.", bufferSize, readBytes);
+                yield return new WaitForEndOfFrame();
             }
-            Parallel.For(0, 512, x =>
+            else
             {
-                for (int y = 0; y < 424; y++) //rows = 424
+                Parallel.For(0, 512, x =>
                 {
-                    int i = y * 512 + x;
-
-                    byte r = packet_buffer[(i * 7)];
-                    byte g = packet_buffer[(i * 7) + 1];
-                    byte b = packet_buffer[(i * 7) + 2];
-                    byte a = packet_buffer[(i * 7) + 3];
-                    float depth = (float)BitConverter.ToUInt16(packet_buffer, (i * 7) + 4);
-                    byte bodyId = packet_buffer[(i * 7) + 6];
-
-
-
-                    if (bodyId > 5)
+                    for (int y = 0; y < 424; y++) //rows = 424
                     {
-                        pointInfos[i].active = false;
+                        int i = y * 512 + x;
+
+                        byte r = packet_buffer[(i * 7) + header];
+                        byte g = packet_buffer[(i * 7) + 1 + header];
+                        byte b = packet_buffer[(i * 7) + 2 + header];
+                        byte a = packet_buffer[(i * 7) + 3 + header];
+                        float depth = (float)BitConverter.ToUInt16(packet_buffer, (i * 7) + 4 + header);
+                        byte bodyId = packet_buffer[(i * 7) + 6 + header];
+
+                        pointInfos[i].active = (bodyId <= 5);
+                        pointInfos[i].position = new Vector3(-0.01f * (float)x, -0.01f * (float)y, 0.001f * (float)depth);
+                        pointInfos[i].color = new Color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
                     }
-                    else
-                    {
-                        pointInfos[i].active = true;
-                    }
-                    pointInfos[i].position = new Vector3(-0.01f * (float)x, -0.01f * (float)y, 0.001f * (float)depth);
-                    pointInfos[i].color = new Color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
-                    //testpic.SetPixel(x,y,System.Drawing.Color.FromArgb(r,g,b));
+                });
 
+                //timestamp = BitConverter.ToInt64(packet_buffer, 0);
+                //DateTime sentTime = new DateTime(timestamp, DateTimeKind.Utc);//change sent time to ticks(long)
+                //receivedTime = DateTime.UtcNow;
+                //TimeSpan elapsedTicks = receivedTime - sentTime;
+                //UnityEngine.Debug.Log($"receiving and writing in buffer:{elapsedTicks.TotalMilliseconds}ms");
 
-                }
-            });
-            //for (int x = 0; x < 512; x++)//cols = 512           
-            //{
-                //for (int y = 0; y < 424; y++) //rows = 424
-                //{
-                //    int i = y * 512 + x;
-
-                //    byte r = packet_buffer[(i * 7)];
-                //    byte g = packet_buffer[(i * 7) + 1];
-                //    byte b = packet_buffer[(i * 7) + 2];
-                //    byte a = packet_buffer[(i * 7) + 3];
-                //    float depth = (float)BitConverter.ToUInt16(packet_buffer, (i * 7) + 4);
-                //    byte bodyId = packet_buffer[(i * 7) + 6];
-
-                    
-                    
-                //    if (bodyId > 5)
-                //    {
-                //        pointInfos[i].active = false;
-                //    }
-                //    else
-                //    {
-                //        pointInfos[i].active = true;
-                //    }
-                //    pointInfos[i].position = new Vector3(-0.01f * (float)x, -0.01f * (float)y, 0.001f * (float)depth);
-                //    pointInfos[i].color = new Color(r/255.0f, g / 255.0f, b/255.0f, a/255.0f);
-                //    //testpic.SetPixel(x,y,System.Drawing.Color.FromArgb(r,g,b));
-
-                   
-                //}
-           // }
-            //byte[] bytes = texture.EncodeToPNG();
-            //System.IO.File.WriteAllBytes(Application.dataPath + "/output.png", bytes);
-            //testpic.Save(@"C:\Users\yiyu\Documents\uni\Master\test.png", System.Drawing.Imaging.ImageFormat.Png);
+                yield return new WaitForEndOfFrame();
+            }
         }
-        
     }
 }
