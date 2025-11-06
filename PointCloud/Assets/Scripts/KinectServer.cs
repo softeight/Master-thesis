@@ -39,8 +39,8 @@ public class KinectServer : MonoBehaviour
     private int bufferSize;
 
     public int header = 8;
-    //public long timestamp;
-    //public DateTime receivedTime;
+    public long timestamp;
+    public DateTime receivedTime;
 
     //public Texture2D texture;
 
@@ -94,16 +94,16 @@ public class KinectServer : MonoBehaviour
                 var point = Points[i];
                 var pointInf = pointInfos[i];
 
-                if (!pointInf.active)
-                {
-                    point.SetActive(false);
-                    continue;
-                }
+                //if (!pointInf.active)
+                //{
+                //    point.SetActive(false);
+                //    continue;
+                //}
               
                 point.transform.position = pointInf.position;
-                point.SetActive(true);
 
                 Renderer rend = point.GetComponent<Renderer>();
+                rend.enabled = pointInf.active;
                 rend.material.color = pointInf.color;
             }
         }
@@ -166,11 +166,11 @@ public class KinectServer : MonoBehaviour
                     }
                 });
 
-                //timestamp = BitConverter.ToInt64(packet_buffer, 0);
-                //DateTime sentTime = new DateTime(timestamp, DateTimeKind.Utc);//change sent time to ticks(long)
-                //receivedTime = DateTime.UtcNow;
-                //TimeSpan elapsedTicks = receivedTime - sentTime;
-                //UnityEngine.Debug.Log($"receiving and writing in buffer:{elapsedTicks.TotalMilliseconds}ms");
+                timestamp = BitConverter.ToInt64(packet_buffer, 0);
+                DateTime sentTime = new DateTime(timestamp, DateTimeKind.Utc);//change sent time to ticks(long)
+                receivedTime = DateTime.UtcNow;
+                TimeSpan elapsedTicks = receivedTime - sentTime;
+                UnityEngine.Debug.Log($"receiving and writing in buffer:{elapsedTicks.TotalMilliseconds}ms");
 
                 yield return new WaitForEndOfFrame();
             }

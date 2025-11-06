@@ -33,6 +33,7 @@ namespace KinectClient
             byte[] color_data = new byte[1920 * 1080 * 4];          
             ushort[] depth_data = new ushort[pixel_count];
             byte[] body_index_data = new byte[pixel_count];
+            byte[] converted_color_data = new byte[pixel_count * 4];
 
             byte[] packet_buffer = new byte[(7 * pixel_count) + 8];
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
@@ -56,6 +57,8 @@ namespace KinectClient
                 Console.WriteLine("Waiting for client...");
 
                 TcpClient client = listner.AcceptTcpClient();
+                client.NoDelay = true;
+                client.SendBufferSize = packet_buffer.Length;
                 NetworkStream ns = client.GetStream();
 
                 Console.WriteLine("Sending packages...");
@@ -101,61 +104,38 @@ namespace KinectClient
 
 
                     //writing each pixel data into packet buffer
-                    
-                    
-                    Parallel.For(0, 512, x =>
+
+
+                    Parallel.For(0, pixel_count, i =>
                     {
-                        for (int y = 0; y < 424; y++)
+                        int converted_color_index = i * 4;
+
+                        int color_x = (int)Math.Floor(colorSpacePoints[i].X + 0.5);
+                        int color_y = (int)Math.Floor(colorSpacePoints[i].Y + 0.5);
+
+                        if (color_x >= 0 && (color_x < 1920)
+                            && (color_y >= 0) && (color_y < 1080))
                         {
+                            int color_index = (color_y * 1920 + color_x) * 4;
 
-                            float v = y / (float)424;
+                            converted_color_data[converted_color_index] = color_data[color_index];
+                            converted_color_data[converted_color_index + 1] = color_data[color_index + 1];
+                            converted_color_data[converted_color_index + 2] = color_data[color_index + 2];
+                            converted_color_data[converted_color_index + 3] = color_data[color_index + 3];
+                        }
+                        else
+                        {
+                            converted_color_data[converted_color_index] = 0;
+                            converted_color_data[converted_color_index + 1] = 0;
+                            converted_color_data[converted_color_index + 2] = 0;
+                            converted_color_data[converted_color_index + 3] = 255;
 
-                            int i = y * 512 + x;
-
-                            int color_x = (int)Math.Floor(colorSpacePoints[i].X + 0.5);
-                            int color_y = (int)Math.Floor(colorSpacePoints[i].Y + 0.5);
-
-                            if (color_x >= 0 && (color_x < 1920)
-                                && (color_y >= 0) && (color_y < 1080))
-                            {
-                                int color_index = (color_y * 1920 + color_x) * 4;
-                                //get rgba & d & bodyIndex value
-                                byte r = color_data[color_index];
-                                byte g = color_data[color_index + 1];
-                                byte b = color_data[color_index + 2];
-                                byte a = color_data[color_index + 3];
-
-                                ushort depth_value = depth_data[i];
-                                byte[] d = BitConverter.GetBytes(depth_value);
-
-                                byte bodyID = body_index_data[i];
-
-                                //write rgba & d & bodyIndex into the buffer
-                                packet_buffer[(i * 7)+header] = r;
-                                packet_buffer[(i * 7) + 1+header] = g;
-                                packet_buffer[(i * 7) + 2+header] = b;
-                                packet_buffer[(i * 7) + 3+header] = a;
-                                Array.ConstrainedCopy(d, 0, packet_buffer, (i * 7) + 4+header, 2);
-                                packet_buffer[(i * 7) + 6+header] = bodyID;
-
-                                //testpic.SetPixel(x, y, Color.FromArgb(r, g, b));
-                            }
-                            else
-                            {
-                                packet_buffer[i * 7 + header] = 0;
-                                packet_buffer[i * 7 + 1 + header] = 0;
-                                packet_buffer[i * 7 + 2 + header] = 0;
-                                packet_buffer[i * 7 + 3 + header] = 255;
-                                packet_buffer[i * 7 + 4 + header] = 0;
-                                packet_buffer[i * 7 + 5 + header] = 0;
-                                packet_buffer[i * 7 + 6 + header] = 255;
-                                //testpic.SetPixel(x, y, Color.Black);
-                            }
                         }
                     });
 
-                   
-
+                    Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 8, pixel_count * 4);
+                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4) + 8, pixel_count * 2);
+                    Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6) + 8, pixel_count);
 
 
                     try
