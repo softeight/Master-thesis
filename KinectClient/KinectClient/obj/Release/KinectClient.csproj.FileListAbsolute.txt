@@ -8,3 +8,13 @@ C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\Ki
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.csproj.CopyComplete
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.exe
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Release\KinectClient.pdb
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Release\KinectClient.exe.config
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Release\KinectClient.exe
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Release\KinectClient.pdb
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Release\Microsoft.Kinect.dll
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Release\Microsoft.Kinect.xml
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Release\KinectClient.csproj.AssemblyReference.cache
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Release\KinectClient.csproj.CoreCompileInputs.cache
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Release\KinectCl.1A34360F.Up2Date
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Release\KinectClient.exe
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Release\KinectClient.pdb

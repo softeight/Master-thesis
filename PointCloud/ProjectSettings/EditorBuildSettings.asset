@@ -5,4 +5,8 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes: []
-  m_configObjects: {}
+  m_configObjects:
+    Unity.XR.OpenVR.Settings: {fileID: 11400000, guid: 2396a23f9f403dc438347bc141e9d99c, type: 2}
+    Varjo.XR.Settings: {fileID: 11400000, guid: 0ac02fdeaf3063e4ca57391efa48bea7, type: 2}
+    com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: bf2e0c3815fc42a4aa6d9d8a6a4262e4, type: 2}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: af3347f7f00bae34a9c415c382670faa, type: 2}

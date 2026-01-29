@@ -1,9 +1,9 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "C:\\Users\\yiyu\\source\\repos\\KinectClient\\",
+  "WorkspaceRootPath": "C:\\Users\\admin\\Desktop\\Master Thesis ys\\Master-thesis\\KinectClient\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{7DA32057-B019-42F3-9851-3A3B07358D4E}|KinectClient\\KinectClient.csproj|C:\\Users\\yiyu\\source\\repos\\KinectClient\\kinectclient\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{7DA32057-B019-42F3-9851-3A3B07358D4E}|KinectClient\\KinectClient.csproj|c:\\users\\admin\\desktop\\master thesis ys\\master-thesis\\kinectclient\\kinectclient\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{7DA32057-B019-42F3-9851-3A3B07358D4E}|KinectClient\\KinectClient.csproj|solutionrelative:kinectclient\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
@@ -20,11 +20,11 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "Program.cs",
-              "DocumentMoniker": "C:\\Users\\yiyu\\source\\repos\\KinectClient\\KinectClient\\Program.cs",
+              "DocumentMoniker": "C:\\Users\\admin\\Desktop\\Master Thesis ys\\Master-thesis\\KinectClient\\KinectClient\\Program.cs",
               "RelativeDocumentMoniker": "KinectClient\\Program.cs",
-              "ToolTip": "C:\\Users\\yiyu\\source\\repos\\KinectClient\\KinectClient\\Program.cs*",
-              "RelativeToolTip": "KinectClient\\Program.cs*",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABgAAAAOAAAAAAAAAA==",
+              "ToolTip": "C:\\Users\\admin\\Desktop\\Master Thesis ys\\Master-thesis\\KinectClient\\KinectClient\\Program.cs",
+              "RelativeToolTip": "KinectClient\\Program.cs",
+              "ViewState": "AQIAAI4AAAAAAAAAAAAgwD8AAAA5AAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-08-08T10:09:07.878Z",
               "IsPinned": true,

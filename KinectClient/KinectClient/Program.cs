@@ -51,7 +51,7 @@ namespace KinectClient
             //Stopwatch sw = new Stopwatch();
             
             int header = 8;
-            
+
             while (true)
             {
                 Console.WriteLine("Waiting for client...");
@@ -102,6 +102,15 @@ namespace KinectClient
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
+                    // Get Camera instrics value -
+                    //CameraIntrinsics intrics = mapper.GetDepthCameraIntrinsics();
+                    //Console.WriteLine("fx = " + intrics.FocalLengthX);
+                    //Console.WriteLine("fy = " + intrics.FocalLengthY);
+                    //Console.WriteLine("cx = " + intrics.PrincipalPointX);
+                    //Console.WriteLine("cx = " + intrics.PrincipalPointY);
+                    //Console.ReadLine();
+
+
 
                     //writing each pixel data into packet buffer
 
@@ -138,24 +147,24 @@ namespace KinectClient
                     Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6) + 8, pixel_count);
 
 
-                    try
-                    {
-                        long timestamp = DateTime.UtcNow.Ticks;
-                        byte[] time_bytes = BitConverter.GetBytes(timestamp);
-                        Buffer.BlockCopy(time_bytes, 0, packet_buffer, 0, header);
-                        ns.Write(packet_buffer, 0, packet_buffer.Length);
-                        ns.Flush();
-                       
+                try
+                {
+                    long timestamp = DateTime.UtcNow.Ticks;
+                    byte[] time_bytes = BitConverter.GetBytes(timestamp);
+                    Buffer.BlockCopy(time_bytes, 0, packet_buffer, 0, header);
+                    ns.Write(packet_buffer, 0, packet_buffer.Length);
+                    ns.Flush();
 
-                    }
-                    catch (System.IO.IOException ex)
-                    {
-                        Console.WriteLine("Client disconnected.");
-                        break;
-                    }
+
                 }
-
+                catch (System.IO.IOException ex)
+                {
+                    Console.WriteLine("Client disconnected.");
+                    break;
+                }
             }
+
+        }
 
         }
     }
