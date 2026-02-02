@@ -49,14 +49,21 @@ Shader "Unlit/PointCloudShader"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o); 
 
                 float4 data = _Positions[instanceID];
+                //uint test = instanceID % 5;
+                //float z = ((float)test - 2.0) *0.5;
+                //float x = ((float)test - 2.0) *0.1;
+
+                //float3 fixPos = float3(x, 0, z):
                 float z = average_z.x;
                 float3 localPos = (v.vertex.xyz * data.w) + data.xyz - float3(0.0f, 0.0f, z); 
                 //float4 worldPos = mul(unity_CameraToWorld, float4(cameraPos,1.0f));
+                //float3 localPos = v.vertex.xyz + fixPos;
                 float4 worldPos = mul(_RootMatrix, float4(localPos,1.0));
                
                 //o.vertex = mul(UNITY_MATRIX_P, cameraPos);
                 o.vertex = mul(UNITY_MATRIX_VP, worldPos);
-                o.color = _Colors[instanceID];  
+                o.color = _Colors[instanceID]; 
+                //o.color = float3(1,1,0);
                 UNITY_TRANSFER_FOG(o,o.vertex);
                 return o;
             }
