@@ -21,13 +21,11 @@ Shader "Unlit/PointCloudShader"
             StructuredBuffer<float4> _Colors;
             StructuredBuffer<float4> _Positions;
             float4x4 _RootMatrix;
-            float4 average_z;
+            float4 factor;
 
             struct appdata
             {
                 float4 vertex : POSITION;
-                //float2 id : SV_VertexID;
-
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -48,22 +46,18 @@ Shader "Unlit/PointCloudShader"
                 UNITY_INITIALIZE_OUTPUT(v2f, o); 
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o); 
 
-                float4 data = _Positions[instanceID];
-                //uint test = instanceID % 5;
-                //float z = ((float)test - 2.0) *0.5;
-                //float x = ((float)test - 2.0) *0.1;
-
-                //float3 fixPos = float3(x, 0, z):
-                float z = average_z.x;
-                float3 localPos = (v.vertex.xyz * data.w) + data.xyz - float3(0.0f, 0.0f, z); 
-                //float4 worldPos = mul(unity_CameraToWorld, float4(cameraPos,1.0f));
-                //float3 localPos = v.vertex.xyz + fixPos;
+                float4 data = _Positions[instanceID];              
+                float z = factor.w; // Get mean depth value
+                float min_y = factor.x; // Get the min y value
+                float x = factor.y; // mean x value 
+                float3 localPos =
+                    (v.vertex.xyz * data.w)     // Scale sphere according to point size
+                    + data.xyz                  // Translate sphere to local position
+                    + float3(-x, -min_y, -z);   // Correct for x,y,z
                 float4 worldPos = mul(_RootMatrix, float4(localPos,1.0));
                
-                //o.vertex = mul(UNITY_MATRIX_P, cameraPos);
                 o.vertex = mul(UNITY_MATRIX_VP, worldPos);
                 o.color = _Colors[instanceID]; 
-                //o.color = float3(1,1,0);
                 UNITY_TRANSFER_FOG(o,o.vertex);
                 return o;
             }
@@ -73,7 +67,6 @@ Shader "Unlit/PointCloudShader"
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i); 
                 // sample the texture
                 fixed4 col = i.color;
-                //col = 1 - col;
                 // apply fog
                 UNITY_APPLY_FOG(i.fogCoord, col);
                 return col;

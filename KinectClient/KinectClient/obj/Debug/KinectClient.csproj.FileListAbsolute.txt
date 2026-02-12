@@ -18,3 +18,13 @@ C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Debug\Kine
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.CopyComplete
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Debug\KinectClient.exe
 C:\Users\yiyu\Documents\uni\Master\code\KinectClient\KinectClient\obj\Debug\KinectClient.pdb
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Debug\KinectClient.exe.config
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Debug\KinectClient.exe
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Debug\KinectClient.pdb
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Debug\Microsoft.Kinect.dll
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\bin\Debug\Microsoft.Kinect.xml
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.AssemblyReference.cache
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Debug\KinectClient.csproj.CoreCompileInputs.cache
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Debug\KinectCl.1A34360F.Up2Date
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Debug\KinectClient.exe
+C:\Users\admin\Desktop\Master Thesis ys\Master-thesis\KinectClient\KinectClient\obj\Debug\KinectClient.pdb

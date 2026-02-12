@@ -1,18 +1,14 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using System.Net;
 using System.Net.Sockets;
-using System.Threading.Tasks;
 using System;
-using Unity.VisualScripting;
+
 
 public class PointCloudCompute : MonoBehaviour
 {
     public int subMeshIndex = 0;
-    public int instanceCount = 0;
-    public float PointSize = 0.005f;
-    public int scale = 3;
+    public float PointSize = 0.02f;
+    public float Scale = 1.0f;
 
     // Initialize TCP related variables
     private TcpClient client;
@@ -26,12 +22,11 @@ public class PointCloudCompute : MonoBehaviour
     public const int cols = 512;
     public const int pixel_count = rows*cols;
     private int bufferSize;
-    public int header = 8;
 
-    //
-    public ushort[] depth_data = new ushort[pixel_count];
-    public byte[] bodyIDs = new byte[pixel_count];
-    byte[] original_color = new byte[pixel_count * 4];
+    // Arrays for storing receiving data
+    private ushort[] depth_data = new ushort[pixel_count];
+    private byte[] bodyIDs = new byte[pixel_count];
+    private byte[] original_color = new byte[pixel_count * 4];
 
     // Variables for Callibration of Kinect Camera
     float cx = 262.72f;
@@ -39,24 +34,19 @@ public class PointCloudCompute : MonoBehaviour
     float fx = 365.77f;
     float fy = 365.77f;
 
-
     // Initialize GPU buffer
     private ComputeBuffer positionsBuffer;
     private ComputeBuffer colorsBuffer;
-    //private ComputeBuffer BodyIDBuffer;
     private ComputeBuffer argsBuffer;
     private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
 
     public Material material = default;
     public Mesh mesh;
-    public Vector4[] positions = new Vector4[pixel_count];
-    public Color[] colors = new Color[pixel_count];
+    private Vector4[] positions = new Vector4[pixel_count];
+    private Color[] colors = new Color[pixel_count];
 
     public Transform pointCloudRoot;
 
-    //private Vector3 centerOffset = Vector3.zero;
-    //private Vector3 lockedCenterOffset = Vector3.zero;
-    //private bool offsetLocked = false;
 
     public void OnValidate()
     {
@@ -77,7 +67,7 @@ public class PointCloudCompute : MonoBehaviour
     void Start()
     {      
         // Initialize TCP relavent Variables
-        bufferSize = (7 * pixel_count) + header;
+        bufferSize = (7 * pixel_count);
         packet_buffer = new byte[bufferSize];
         client = new TcpClient();
 
@@ -106,53 +96,43 @@ public class PointCloudCompute : MonoBehaviour
 
     void UpdateBuffers()
     {
-        instanceCount = 0;
-        float z_sum = 0.0f;
-        int count = 0;
+        int instanceCount = 0;
+        float meanDepth = 0.0f;
+        float min_y = float.MaxValue;
+        float mean_x = 0.0f;
+
 
         for (int i = 0; i < pixel_count; i++)
         {
-
             if (bodyIDs[i] != 255)
             {
+                // Recalculate the x and y index
                 int x_pixel = i % cols;
                 int y_pixel = i / cols;
+              
+                // Get the real x,y,z value
+                float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
+                float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
+                float y = (y_pixel - cy) * -z / fy;
 
-                float z = depth_data[i] * 0.001f;
-                float x = (x_pixel - cx) * z / fx;
-                float y = (y_pixel - cy) * z / fy;
-                //Vector3 p = new Vector3(-x * scale, -y * scale, z * scale);
-                positions[instanceCount] = new Vector4(-x * scale, -y * scale, z * scale, PointSize * scale);
-                //min = Vector3.Min(min, p);
-                //max = Vector3.Max(max, p);
-                colors[instanceCount] = new Color(original_color[i * 4] / 255.0f, original_color[i * 4 + 1] / 255.0f, original_color[i * 4 + 2] / 255.0f, original_color[i * 4 + 3] / 255.0f);
+                // Calculate factor value
+                meanDepth += z;
+                min_y = Mathf.Min(min_y, y); //calculate the min y value, so we can put the human always on the ground
+                mean_x += x;
+                
+                // Write position and color data to the array
+                positions[instanceCount] = new Vector4(x * Scale, y * Scale, z, PointSize);
+                colors[instanceCount] = new Color(
+                    original_color[i * 4] / 255.0f, 
+                    original_color[i * 4 + 1] / 255.0f, 
+                    original_color[i * 4 + 2] / 255.0f, 
+                    original_color[i * 4 + 3] / 255.0f);
 
                 instanceCount++;
-
-                z_sum += z;
-                count++;
             }
         }
-
-        float average = 0.0f;
-
-        if (count > 0)
-            average = z_sum / (float)count;
-
-        material.SetVector("average_z", new Vector4(average, average, average, average));
-
-        //Vector3 center = (min + max) * 0.5f;
-        //Vector3 centerOffset = -center;
-        //Debug.Log("center offset: " + centerOffset);
-
-        //if (!offsetLocked)
-        //{
-        //    lockedCenterOffset = centerOffset;
-        //    offsetLocked = true;
-        //}
-        //material.SetVector("_CenterOffset", (Vector4)lockedCenterOffset);
-
-
+        // Set factor and position/color buffer, so it can be give to the shader
+        material.SetVector("factor", new Vector4(min_y, mean_x / Convert.ToSingle(instanceCount), 0.0f, meanDepth / Convert.ToSingle(instanceCount)));
         positionsBuffer.SetData(positions);
         colorsBuffer.SetData(colors);
 
@@ -186,17 +166,13 @@ public class PointCloudCompute : MonoBehaviour
             {
                 UnityEngine.Debug.Log("Connecting...");
                 client.Connect(serverIp, serverPort);
-                //client.NoDelay = true;
                 client.ReceiveBufferSize = bufferSize;
                 stream = client.GetStream();
                 UnityEngine.Debug.Log("Connected.");
             }
 
             while (position < bufferSize)
-            {
-                //while (!stream.DataAvailable)
-                //    yield return new WaitForEndOfFrame();
-
+            {            
                 var result = stream.BeginRead(packet_buffer, position, bufferSize - position, null, null);
 
                 while (!result.IsCompleted)
@@ -215,33 +191,12 @@ public class PointCloudCompute : MonoBehaviour
                 // position zuruecksetzen
                 position = 0;
 
-                Buffer.BlockCopy(packet_buffer, header, original_color, 0, pixel_count * 4);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 4) + header, depth_data,0, pixel_count*2);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 6) + header, bodyIDs, 0, pixel_count);
+                Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
+                Buffer.BlockCopy(packet_buffer, (pixel_count * 4), depth_data,0, pixel_count*2);
+                Buffer.BlockCopy(packet_buffer, (pixel_count * 6), bodyIDs, 0, pixel_count);
 
 
                 yield return new WaitForEndOfFrame();
-            //while (!stream.DataAvailable)
-            //    yield return new WaitForEndOfFrame();
-
-            //var result = stream.BeginRead(packet_buffer, totalBytesRead, bufferSize - totalBytesRead, null, null);
-
-            //while (!result.IsCompleted)
-            //    yield return new WaitForEndOfFrame();
-
-            //totalBytesRead += stream.EndRead(result);
-
-            //if (totalBytesRead >= bufferSize)
-            //{
-            //    totalBytesRead = 0;
-
-            //    Buffer.BlockCopy(packet_buffer, header, original_color, 0, pixel_count * 4);
-            //    Buffer.BlockCopy(packet_buffer, (pixel_count * 4) + header, depth_data, 0, pixel_count * 2);
-            //    Buffer.BlockCopy(packet_buffer, (pixel_count * 6) + header, bodyIDs, 0, pixel_count);
-            //}
-
-            //yield return new WaitForEndOfFrame();
-
         }
     }
 

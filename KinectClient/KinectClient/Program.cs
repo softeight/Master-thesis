@@ -17,10 +17,23 @@ namespace KinectClient
     {
         static void Main(string[] args)
         {
+            int port;
+
+            if (args.Length == 0)
+            {
+                Console.WriteLine("No port provided!");
+                return;
+            }
+            else if (!int.TryParse(args[0], out port))
+            {
+                Console.WriteLine("Invalid port provided!");
+                return;
+            }
+
             //Bitmap testpic = new Bitmap(512, 424);
             //initialise tcp listener instance & set endpoint
 
-            var listner = new TcpListener(IPAddress.Loopback, 3363);
+            var listner = new TcpListener(IPAddress.Loopback, port);
             listner.Start();
 
             //initialize the camera sensor
@@ -35,7 +48,7 @@ namespace KinectClient
             byte[] body_index_data = new byte[pixel_count];
             byte[] converted_color_data = new byte[pixel_count * 4];
 
-            byte[] packet_buffer = new byte[(7 * pixel_count) + 8];
+            byte[] packet_buffer = new byte[(7 * pixel_count)];
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
            
 
@@ -50,11 +63,11 @@ namespace KinectClient
             //int count = 0;
             //Stopwatch sw = new Stopwatch();
             
-            int header = 8;
+            //int header = 8;
 
             while (true)
             {
-                Console.WriteLine("Waiting for client...");
+                Console.WriteLine($"Waiting for client at port {port}...");
 
                 TcpClient client = listner.AcceptTcpClient();
                 client.NoDelay = true;
@@ -102,19 +115,7 @@ namespace KinectClient
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
-                    // Get Camera instrics value -
-                    //CameraIntrinsics intrics = mapper.GetDepthCameraIntrinsics();
-                    //Console.WriteLine("fx = " + intrics.FocalLengthX);
-                    //Console.WriteLine("fy = " + intrics.FocalLengthY);
-                    //Console.WriteLine("cx = " + intrics.PrincipalPointX);
-                    //Console.WriteLine("cx = " + intrics.PrincipalPointY);
-                    //Console.ReadLine();
-
-
-
-                    //writing each pixel data into packet buffer
-
-
+                   //writing each pixel data into packet buffer
                     Parallel.For(0, pixel_count, i =>
                     {
                         int converted_color_index = i * 4;
@@ -142,16 +143,13 @@ namespace KinectClient
                         }
                     });
 
-                    Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 8, pixel_count * 4);
-                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4) + 8, pixel_count * 2);
-                    Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6) + 8, pixel_count);
+                    Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
+                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4) , pixel_count * 2);
+                    Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6), pixel_count);
 
 
                 try
                 {
-                    long timestamp = DateTime.UtcNow.Ticks;
-                    byte[] time_bytes = BitConverter.GetBytes(timestamp);
-                    Buffer.BlockCopy(time_bytes, 0, packet_buffer, 0, header);
                     ns.Write(packet_buffer, 0, packet_buffer.Length);
                     ns.Flush();
 

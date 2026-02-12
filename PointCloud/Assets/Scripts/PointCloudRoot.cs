@@ -23,18 +23,18 @@ public class PointCloudRoot : MonoBehaviour
             return;
         }
 
+        // Get controller transform
         Vector3 ctlpos = controller.transform.position;
 
+        // Get controller rotation (for y axle)
         float yaxis = controller.transform.eulerAngles.y;
         Quaternion rotY = Quaternion.Euler(0, yaxis, 0);
 
-        //Debug.Log("controller pos:" + controller.transform.position);
-        //Debug.Log("controller rot:" + controller.transform.rotation);
-
+        // Transform controller's position and rotation to the Root Object
         pointCloudRoot.transform.position = new Vector3(ctlpos.x, pointCloudRoot.position.y, ctlpos.z);
         pointCloudRoot.transform.localRotation = rotY;
 
-        //Debug.Log("root pos:" + pointCloudRoot.transform.position);
+
 
 
 
