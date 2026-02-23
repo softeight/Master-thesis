@@ -17,23 +17,20 @@ namespace KinectClient
     {
         static void Main(string[] args)
         {
-            int port;
+            int port = 3363;
+            string ip = "134.109.192.10";
 
-            if (args.Length == 0)
+            if (args.Length == 2)
             {
-                Console.WriteLine("No port provided!");
-                return;
-            }
-            else if (!int.TryParse(args[0], out port))
-            {
-                Console.WriteLine("Invalid port provided!");
-                return;
-            }
+                ip = args[0];
+                port = int.Parse(args[1]);
 
-            //Bitmap testpic = new Bitmap(512, 424);
-            //initialise tcp listener instance & set endpoint
+            }
+            
+            IPAddress ipAddress = IPAddress.Parse(ip);
 
-            var listner = new TcpListener(IPAddress.Loopback, port);
+
+            var listner = new TcpListener(ipAddress, port);
             listner.Start();
 
             //initialize the camera sensor
@@ -58,12 +55,7 @@ namespace KinectClient
 
             //open the reader for the depth & color frames
             reader = kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
-
-            //long sum = 0;
-            //int count = 0;
-            //Stopwatch sw = new Stopwatch();
-            
-            //int header = 8;
+;
 
             while (true)
             {
@@ -78,15 +70,10 @@ namespace KinectClient
 
                 while (true)
                 {
-                    //sw.Start();
                     //getting depth&color&bodyIdx frame from kinect
                     MultiSourceFrame msf = reader.AcquireLatestFrame();
                     if (msf == null)
-                    {
-                        //Console.WriteLine("No MultiSourceFrame, skipping...");                
-
                         continue;
-                    }
 
                     using (var df = msf.DepthFrameReference.AcquireFrame())
                     {
@@ -115,7 +102,7 @@ namespace KinectClient
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
-                   //writing each pixel data into packet buffer
+                    //writing each pixel data into packet buffer
                     Parallel.For(0, pixel_count, i =>
                     {
                         int converted_color_index = i * 4;
@@ -144,25 +131,25 @@ namespace KinectClient
                     });
 
                     Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
-                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4) , pixel_count * 2);
+                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4), pixel_count * 2);
                     Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6), pixel_count);
 
 
-                try
-                {
-                    ns.Write(packet_buffer, 0, packet_buffer.Length);
-                    ns.Flush();
+                    try
+                    {
+                        ns.Write(packet_buffer, 0, packet_buffer.Length);
+                        ns.Flush();
+                    }
+                    catch (System.IO.IOException ex)
+                    {
+                        Console.WriteLine("Client disconnected.");
+                        break;
+                    }
 
+                    System.Threading.Thread.Sleep(1000 / 24);
+                }
 
-                }
-                catch (System.IO.IOException ex)
-                {
-                    Console.WriteLine("Client disconnected.");
-                    break;
-                }
             }
-
-        }
 
         }
     }

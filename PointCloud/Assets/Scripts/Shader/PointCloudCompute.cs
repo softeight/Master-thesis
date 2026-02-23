@@ -13,8 +13,8 @@ public class PointCloudCompute : MonoBehaviour
     // Initialize TCP related variables
     private TcpClient client;
     private NetworkStream stream;
-    public string serverIp = "127.0.0.1";
-    public int serverPort = 3363;
+    public string ClientIp;
+    public int ClientPort;
 
     // Variables for TCP packet
     private byte[] packet_buffer;
@@ -65,7 +65,10 @@ public class PointCloudCompute : MonoBehaviour
 
     // Start is called before the first frame update
     void Start()
-    {      
+    {
+        var cfg = ConfigLoader.Load();
+        ClientIp = cfg.ip;
+        ClientPort = cfg.port;
         // Initialize TCP relavent Variables
         bufferSize = (7 * pixel_count);
         packet_buffer = new byte[bufferSize];
@@ -164,8 +167,8 @@ public class PointCloudCompute : MonoBehaviour
         {
             if (!client.Connected)
             {
-                UnityEngine.Debug.Log("Connecting...");
-                client.Connect(serverIp, serverPort);
+                UnityEngine.Debug.Log($"Connecting to {ClientIp}:{ClientPort}...");
+                client.Connect(ClientIp, ClientPort);
                 client.ReceiveBufferSize = bufferSize;
                 stream = client.GetStream();
                 UnityEngine.Debug.Log("Connected.");
