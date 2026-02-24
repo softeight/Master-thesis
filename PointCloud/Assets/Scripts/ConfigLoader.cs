@@ -6,7 +6,7 @@ using System.IO;
 [System.Serializable]
 public class NetworkConfig 
 {
-    public string ip = "134.109.192.80";
+    public string ip = "127.0.0.1";
     public int port = 3363;
 }
 

@@ -69,7 +69,7 @@ namespace KinectClient
                 port = int.Parse(args[1]);
 
             }
-            
+
             IPAddress ipAddress = IPAddress.Parse(ip);
 
 
@@ -77,17 +77,17 @@ namespace KinectClient
             listner.Start();
 
             //initialize the camera sensor
-            KinectSensor kinectSensor = null;          
+            KinectSensor kinectSensor = null;
             MultiSourceFrameReader reader = null;
             CoordinateMapper mapper = null;
 
             //create empty array to store 
             int pixel_count = 512 * 424;
-            byte[] color_data = new byte[1920 * 1080 * 4];          
+            byte[] color_data = new byte[1920 * 1080 * 4];
             ushort[] depth_data = new ushort[pixel_count];
             byte[] body_index_data = new byte[pixel_count];
-            //byte[] converted_color_data = new byte[pixel_count * 4];
-            Bitmap converted_color_data = new Bitmap(512, 424, PixelFormat.Format32bppArgb);
+            byte[] converted_color_data = new byte[pixel_count * 4];
+            //Bitmap converted_color_data = new Bitmap(512, 424, PixelFormat.Format32bppArgb);
             int framesPerSecond = 24;
 
             // FourCC For marking the packet start.
@@ -95,14 +95,14 @@ namespace KinectClient
 
             //byte[] packet_buffer = new byte[(7 * pixel_count)];
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
-           
+
             //get thw kinectSensor object
             kinectSensor = KinectSensor.GetDefault();
             kinectSensor.Open();
 
             //open the reader for the depth & color frames
             reader = kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
-;
+            ;
 
             while (true)
             {
@@ -112,11 +112,14 @@ namespace KinectClient
                 client.NoDelay = true;
 
                 using (NetworkStream ns = client.GetStream())
-                { 
+                {
                     Console.WriteLine("Sending packages...");
 
                     while (true)
                     {
+                        // Don't block.
+                        System.Threading.Thread.Sleep(0);
+
                         //getting depth&color&bodyIdx frame from kinect
                         MultiSourceFrame msf = reader.AcquireLatestFrame();
                         if (msf == null)
@@ -150,12 +153,12 @@ namespace KinectClient
                         mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
                         //writing each pixel data into packet buffer
-                        //Parallel.For(0, pixel_count, i =>
-                        for (int i = 0; i < pixel_count; ++i)
+                        Parallel.For(0, pixel_count, i =>
+                        //for (int i = 0; i < pixel_count; ++i)
                         {
-                            //int converted_color_index = i * 4;
-                            int x = i % 512;
-                            int y = i / 512;
+                            int converted_color_index = i * 4;
+                            //int x = i % 512;
+                            //int y = i / 512;
 
                             int color_x = (int)Math.Floor(colorSpacePoints[i].X + 0.5);
                             int color_y = (int)Math.Floor(colorSpacePoints[i].Y + 0.5);
@@ -165,28 +168,28 @@ namespace KinectClient
                             {
                                 int color_index = (color_y * 1920 + color_x) * 4;
 
-                                converted_color_data.SetPixel(x, y, Color.FromArgb(
-                                    color_data[color_index + 3],   // A
-                                    color_data[color_index + 0],   // R
-                                    color_data[color_index + 1],   // G
-                                    color_data[color_index + 2])); // B
+                                //converted_color_data.SetPixel(x, y, Color.FromArgb(
+                                //    color_data[color_index + 3],   // A
+                                //    color_data[color_index + 0],   // R
+                                //    color_data[color_index + 1],   // G
+                                //    color_data[color_index + 2])); // B
 
-                                //converted_color_data[converted_color_index] = color_data[color_index];
-                                //converted_color_data[converted_color_index + 1] = color_data[color_index + 1];
-                                //converted_color_data[converted_color_index + 2] = color_data[color_index + 2];
-                                //converted_color_data[converted_color_index + 3] = color_data[color_index + 3];
+                                converted_color_data[converted_color_index] = color_data[color_index];
+                                converted_color_data[converted_color_index + 1] = color_data[color_index + 1];
+                                converted_color_data[converted_color_index + 2] = color_data[color_index + 2];
+                                converted_color_data[converted_color_index + 3] = color_data[color_index + 3];
                             }
                             else
                             {
-                                converted_color_data.SetPixel(x, y, Color.Black);
+                                //converted_color_data.SetPixel(x, y, Color.Black);
 
-                                //converted_color_data[converted_color_index] = 0;
-                                //converted_color_data[converted_color_index + 1] = 0;
-                                //converted_color_data[converted_color_index + 2] = 0;
-                                //converted_color_data[converted_color_index + 3] = 255;
+                                converted_color_data[converted_color_index] = 0;
+                                converted_color_data[converted_color_index + 1] = 0;
+                                converted_color_data[converted_color_index + 2] = 0;
+                                converted_color_data[converted_color_index + 3] = 255;
                             }
-                            //});
-                        }
+                        });
+                        //}
 
                         //Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
                         //Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4), pixel_count * 2);
@@ -199,51 +202,68 @@ namespace KinectClient
                         byte[] packet;
 
                         using (var packetStream = new MemoryStream(pixel_count * 3))
-                        using (var writer = new BinaryWriter(packetStream))
                         {
-                            // Convert color image into jpeg and write it to the packet stream.
-                            converted_color_data.ToJpeg(packetStream);
-                            //converted_color_data.ToPng(packetStream);
+                            using (var writer = new BinaryWriter(packetStream))
+                            {
+                                // Convert color image into jpeg and write it to the packet stream.
+                                //converted_color_data.ToJpeg(packetStream);
+                                //converted_color_data.ToPng(packetStream);
+                                packetStream.Write(converted_color_data, 0, converted_color_data.Length);
+                                writer.Flush();
 
-                            // Write the depth to the packet stream.
-                            depthPosition = Convert.ToUInt32(packetStream.Position);
-                            foreach (var depth in depth_data)
-                                writer.Write(depth);
+                                // Write the depth to the packet stream.
+                                depthPosition = Convert.ToUInt32(packetStream.Position);
 
-                            // Write the body index data to the packet stream.
-                            bodyIndexPosition = Convert.ToUInt32(packetStream.Position);
-                            writer.Write(body_index_data);
+                                foreach (var depth in depth_data)
+                                    writer.Write(depth);
+
+                                writer.Flush();
+
+                                // Write the body index data to the packet stream.
+                                bodyIndexPosition = Convert.ToUInt32(packetStream.Position);
+                                writer.Write(body_index_data);
+                            }
 
                             // Save the packet.
-                            writer.Flush();
                             packet = packetStream.ToArray();
                         }
 
+#if DEBUG
+                        var originalPacketSize = packet.Length;
+#endif
+
                         // Compress the overall packet.
                         using (var compressedPacketStream = new MemoryStream(pixel_count))
-                        using (var compressionStream = new DeflateStream(compressedPacketStream, CompressionLevel.Fastest))
-                        using (var writer = new BinaryWriter(compressionStream))
                         {
-                            // Write the depth and body index positions first.
-                            writer.Write(depthPosition);
-                            writer.Write(bodyIndexPosition);
+                            using (var compressionStream = new DeflateStream(compressedPacketStream, CompressionLevel.Fastest))
+                            using (var writer = new BinaryWriter(compressionStream))
+                            {
+                                // Write the depth and body index positions first.
+                                writer.Write(depthPosition);
+                                writer.Write(bodyIndexPosition);
 
-                            // Next, write the package.
-                            writer.Write(packet);
+                                // Next, write the package.
+                                writer.Write(packet);
+                            }
 
-                            // Store the compressed packet.
-                            writer.Flush();
                             packet = compressedPacketStream.ToArray();
                         }
+
+#if DEBUG
+                        var compressedPacketSize = packet.Length;
+                        float compressionRate = ((float)compressedPacketSize / (float)originalPacketSize) * 100.0f;
+#endif
 
                         try
                         {
                             //ns.Write(packet_buffer, 0, packet_buffer.Length);
-                            using(var writer = new BinaryWriter(ns))
+                            using (var writer = new BinaryWriter(ns, Encoding.Default, true))
                             {
-                                // Write magic number and packet size first.
+                                // Write header.
                                 writer.Write(magicNumber);
                                 writer.Write(packet.Length);
+                                writer.Write(depthPosition);
+                                writer.Write(bodyIndexPosition);
 
                                 // Write the compressed packet next.
                                 writer.Write(packet);
@@ -251,18 +271,16 @@ namespace KinectClient
 
                             ns.Flush();
                         }
-                        catch (System.IO.IOException ex)
+                        catch (Exception ex)
                         {
                             Console.WriteLine($"Client disconnected:\r\n\t{ex}");
                             break;
                         }
+
+                        System.Threading.Thread.Sleep(1000 / framesPerSecond);
                     }
-
-                    System.Threading.Thread.Sleep(1000 / framesPerSecond);
                 }
-
             }
-
         }
     }
 }

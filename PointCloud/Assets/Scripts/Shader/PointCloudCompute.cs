@@ -2,7 +2,13 @@ using System.Collections;
 using UnityEngine;
 using System.Net.Sockets;
 using System;
+using System.IO;
+using System.IO.Compression;
+using System.Drawing;
+using System.Runtime.InteropServices;
 
+using Color = UnityEngine.Color;
+using System.Drawing.Imaging;
 
 public class PointCloudCompute : MonoBehaviour
 {
@@ -94,7 +100,7 @@ public class PointCloudCompute : MonoBehaviour
     {
         material.SetMatrix("_RootMatrix", pointCloudRoot.localToWorldMatrix);
         UpdateBuffers();
-        Graphics.DrawMeshInstancedIndirect(mesh, subMeshIndex, material, new Bounds(Vector3.zero, new Vector3(2000.0f, 2000.0f, 2000.0f)), argsBuffer);
+        UnityEngine.Graphics.DrawMeshInstancedIndirect(mesh, subMeshIndex, material, new Bounds(Vector3.zero, new Vector3(2000.0f, 2000.0f, 2000.0f)), argsBuffer);
     }
 
     void UpdateBuffers()
@@ -162,6 +168,7 @@ public class PointCloudCompute : MonoBehaviour
     {
         int position = 0;
         int readBytes = 0;
+        byte[] header = new byte[16]; // 4 * 4 (magic, packet size, offset to depth data, offset to body index data)
 
         while (true)
         {
@@ -169,37 +176,91 @@ public class PointCloudCompute : MonoBehaviour
             {
                 UnityEngine.Debug.Log($"Connecting to {ClientIp}:{ClientPort}...");
                 client.Connect(ClientIp, ClientPort);
-                client.ReceiveBufferSize = bufferSize;
+                //client.ReceiveBufferSize = bufferSize;
                 stream = client.GetStream();
                 UnityEngine.Debug.Log("Connected.");
             }
 
-            while (position < bufferSize)
-            {            
-                var result = stream.BeginRead(packet_buffer, position, bufferSize - position, null, null);
+            // Read chunks of 8 bytes until we found a proper header.
+            var result = stream.BeginRead(header, 0, 16, null, null);
 
-                while (!result.IsCompleted)
-                    yield return new WaitForEndOfFrame();
-                readBytes = stream.EndRead(result);
-                if (readBytes == 0)
+            while (!result.IsCompleted)
+                yield return new WaitForEndOfFrame();
+
+            // Check if we read anything and if not, repeat the whole procedure.
+            readBytes = stream.EndRead(result);
+
+            if (readBytes == 16)
+            {
+                // Check if we are starting with a magic number and if not, discard the package.
+                uint magicNumber = BitConverter.ToUInt32(header, 0);
+                uint packetSize = BitConverter.ToUInt32(header, 4);
+
+                if (magicNumber == 0x3032434B && packetSize > 0) // "KC20"
                 {
-                    yield return null;
+                    uint depthDataOffset = BitConverter.ToUInt32(header, 8);
+                    uint bodyIndexDataOffset = BitConverter.ToUInt32(header, 12);
+
+                    // Allocate a buffer.
+                    byte[] packet_buffer = new byte[packetSize];
+
+                    // Read the packet buffer.
+                    while (position < packetSize)
+                    {
+                        result = stream.BeginRead(packet_buffer, position, Convert.ToInt32(packetSize - position), null, null);
+
+                        while (!result.IsCompleted)
+                            yield return new WaitForEndOfFrame();
+
+                        readBytes = stream.EndRead(result);
+
+                        if (readBytes > 0)
+                            position += readBytes;
+
+                        yield return new WaitForEndOfFrame();
+                    }
+
+                    // Reset position.
+                    position = 0;
+                    
+                    // Uncompress the packet.
+                    using (var compressedStream = new MemoryStream(packet_buffer, false))
+                    using (var compressionStream = new DeflateStream(compressedStream, CompressionMode.Decompress))
+                    using (var reader = new BinaryReader(compressionStream))
+                    //using (var reader = new BinaryReader(compressedStream))
+                    {
+                        // Get offsets to depth and body index data.
+                        var overallSize = bodyIndexDataOffset + pixel_count;
+
+                        // Decompress the remaining bytes.
+                        packet_buffer = reader.ReadBytes(Convert.ToInt32(overallSize));
+                    }
+
+                    //// Read the color image.
+                    //Bitmap colorImage;
+
+                    //using (var colorBufferStream = new MemoryStream(packet_buffer, false))
+                    //    colorImage = new Bitmap(Image.FromStream(colorBufferStream));
+
+                    Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
+                    Buffer.BlockCopy(packet_buffer, Convert.ToInt32(depthDataOffset), depth_data, 0, pixel_count * 2);
+                    Buffer.BlockCopy(packet_buffer, Convert.ToInt32(bodyIndexDataOffset), bodyIDs, 0, pixel_count);
+
+                    //// Convert the color data.
+                    //var imageData = colorImage.LockBits(new Rectangle(0, 0, cols, rows), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+                    //try
+                    //{
+                    //    Marshal.Copy(imageData.Scan0, original_color, 0, pixel_count * 4);
+                    //}
+                    //finally
+                    //{
+                    //    colorImage.UnlockBits(imageData);
+                    //}
                 }
-
-                position += readBytes;
-                yield return null;
-
             }
 
-                // position zuruecksetzen
-                position = 0;
-
-                Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 4), depth_data,0, pixel_count*2);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 6), bodyIDs, 0, pixel_count);
-
-
-                yield return new WaitForEndOfFrame();
+            yield return new WaitForEndOfFrame();
         }
     }
 
