@@ -1,0 +1,12 @@
+﻿################################################################################
+# Diese .gitignore-Datei wurde von Microsoft(R) Visual Studio automatisch erstellt.
+################################################################################
+
+/KinectClient/KinectClient/obj/Release/KinectClient.exe
+/KinectClient/KinectClient/obj/Release/KinectClient.pdb
+/KinectClient/.vs/KinectClient/v17/.suo
+/KinectClient/.vs/KinectClient/v17/DocumentLayout.json
+/KinectClient/KinectClient/bin/Release/KinectClient.exe
+/KinectClient/KinectClient/bin/Release/KinectClient.pdb
+/KinectClient/KinectClient/obj/Debug/KinectClient.exe
+/KinectClient/KinectClient/obj/Debug/KinectClient.pdb
