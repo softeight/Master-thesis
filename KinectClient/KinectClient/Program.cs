@@ -14,7 +14,7 @@ using System.Diagnostics;
 namespace KinectClient
 {
     class Program
-    {
+    {      
         static void Main(string[] args)
         {
             int port = 3363;
@@ -29,7 +29,6 @@ namespace KinectClient
             
             IPAddress ipAddress = IPAddress.Parse(ip);
 
-
             var listner = new TcpListener(ipAddress, port);
             listner.Start();
 
@@ -39,13 +38,20 @@ namespace KinectClient
             CoordinateMapper mapper = null;
 
             //create empty array to store 
-            int pixel_count = 512 * 424;
+            const int rows = 512;
+            const int cols = 424;
+            int xmin = int.MaxValue;
+            int xmax = int.MinValue;
+            int ymin = int.MaxValue;
+            int ymax = int.MinValue;
+            int header = 12;
+            int pixel_count = rows * cols;
             byte[] color_data = new byte[1920 * 1080 * 4];          
             ushort[] depth_data = new ushort[pixel_count];
             byte[] body_index_data = new byte[pixel_count];
             byte[] converted_color_data = new byte[pixel_count * 4];
 
-            byte[] packet_buffer = new byte[(7 * pixel_count)];
+            byte[] packet = new byte[(6 * pixel_count) + 12];
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
            
 
@@ -55,6 +61,8 @@ namespace KinectClient
 
             //open the reader for the depth & color frames
             reader = kinectSensor.OpenMultiSourceFrameReader(FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.BodyIndex);
+
+           // byte[] packet;
 ;
 
             while (true)
@@ -63,7 +71,7 @@ namespace KinectClient
 
                 TcpClient client = listner.AcceptTcpClient();
                 client.NoDelay = true;
-                client.SendBufferSize = packet_buffer.Length;
+                client.SendBufferSize = packet.Length;
                 NetworkStream ns = client.GetStream();
 
                 Console.WriteLine("Sending packages...");
@@ -102,6 +110,39 @@ namespace KinectClient
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
+                    //bool hasBody = false;
+                    Parallel.For(0, pixel_count, i =>
+                    {
+                        if (body_index_data[i] != 255)
+                        {
+                            //hasBody = true;
+                            int x = i % rows;
+                            int y = i / rows;
+                            if (x < xmin) xmin = x;
+                            if (x > xmax) xmax = x;
+                            if (y < ymin) ymin = y;
+                            if (y > ymax) ymax = y;
+                        }
+                    });
+                    int bbox_w = xmax - xmin + 1;
+                    int bbox_h = ymax - ymin + 1;
+                    int payloadBytes = bbox_w * bbox_h * 6;
+                    int totalBytes = header + payloadBytes;
+        
+
+                    Buffer.BlockCopy(BitConverter.GetBytes(totalBytes), 0, packet, 0, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin), 0, packet, 4, 2); 
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin), 0, packet, 6, 2); 
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_w), 0, packet, 8, 2); 
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_h), 0, packet, 10, 2);
+
+                    for (int i = 0; i < bbox_h; i++)
+                    {
+                        int srcIndex = (ymin + i) * rows + xmin;
+                        Buffer.BlockCopy(depth_data, srcIndex * 2, packet, 12, bbox_w * 2);
+            
+                    }
+
                     //writing each pixel data into packet buffer
                     Parallel.For(0, pixel_count, i =>
                     {
@@ -130,14 +171,20 @@ namespace KinectClient
                         }
                     });
 
-                    Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
-                    Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4), pixel_count * 2);
-                    Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6), pixel_count);
+                    for (int i = 0; i < bbox_h; i++)
+                    {
+                        int srcByte = ((ymin + i) * rows + xmin) * 4;
+                        Buffer.BlockCopy(converted_color_data, srcByte, packet, (12 + bbox_w * 2), bbox_w * 4);
+                    }
+
+                    //Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
+                    //Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4), pixel_count * 2);
+                    //Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6), pixel_count);
 
 
                     try
                     {
-                        ns.Write(packet_buffer, 0, packet_buffer.Length);
+                        ns.Write(packet, 0, totalBytes);
                         ns.Flush();
                     }
                     catch (System.IO.IOException ex)

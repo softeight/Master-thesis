@@ -21,12 +21,16 @@ public class PointCloudCompute : MonoBehaviour
     public const int rows = 424;
     public const int cols = 512;
     public const int pixel_count = rows*cols;
-    private int bufferSize;
+    //private int bufferSize;
+    const int header = 12;
+    const int max_payload = pixel_count * 6 + 12;
 
     // Arrays for storing receiving data
     private ushort[] depth_data = new ushort[pixel_count];
-    private byte[] bodyIDs = new byte[pixel_count];
+    //private byte[] bodyIDs = new byte[pixel_count];
     private byte[] original_color = new byte[pixel_count * 4];
+    private byte[] lenBuf = new byte[4];
+    private int xmin,ymin,bbox_w,bbox_h,current_point_count;
 
     // Variables for Callibration of Kinect Camera
     float cx = 262.72f;
@@ -70,8 +74,7 @@ public class PointCloudCompute : MonoBehaviour
         ClientIp = cfg.ip;
         ClientPort = cfg.port;
         // Initialize TCP relavent Variables
-        bufferSize = (7 * pixel_count);
-        packet_buffer = new byte[bufferSize];
+        packet_buffer = new byte[max_payload];
         client = new TcpClient();
 
         // Create args, color, positions Buffer
@@ -104,14 +107,26 @@ public class PointCloudCompute : MonoBehaviour
         float min_y = float.MaxValue;
         float mean_x = 0.0f;
 
-
-        for (int i = 0; i < pixel_count; i++)
+        if (current_point_count == 0)
         {
-            if (bodyIDs[i] != 255)
+            // nothing to draw
+            if (mesh != null)
             {
+                args[0] = (uint)mesh.GetIndexCount(subMeshIndex);
+                args[1] = 0;
+                args[2] = mesh.GetIndexStart(subMeshIndex);
+                args[3] = mesh.GetBaseVertex(subMeshIndex);
+                argsBuffer.SetData(args);
+            }
+            return;
+        }
+
+        for (int i = 0; i < current_point_count; i++)
+        {
+            
                 // Recalculate the x and y index
-                int x_pixel = i % cols;
-                int y_pixel = i / cols;
+                int x_pixel = (i % cols) + xmin;
+                int y_pixel = (i / cols) + ymin;
               
                 // Get the real x,y,z value
                 float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
@@ -132,12 +147,12 @@ public class PointCloudCompute : MonoBehaviour
                     original_color[i * 4 + 3] / 255.0f);
 
                 instanceCount++;
-            }
+            
         }
         // Set factor and position/color buffer, so it can be give to the shader
         material.SetVector("factor", new Vector4(min_y, mean_x / Convert.ToSingle(instanceCount), 0.0f, meanDepth / Convert.ToSingle(instanceCount)));
-        positionsBuffer.SetData(positions);
-        colorsBuffer.SetData(colors);
+        positionsBuffer.SetData(positions,0,0,instanceCount);
+        colorsBuffer.SetData(colors,0,0,instanceCount);
 
 
         if (mesh != null)
@@ -160,8 +175,8 @@ public class PointCloudCompute : MonoBehaviour
 
     private IEnumerator ReadFrame()
     {
-        int position = 0;
-        int readBytes = 0;
+        //int position = 0;
+        //int readBytes = 0;
 
         while (true)
         {
@@ -174,32 +189,75 @@ public class PointCloudCompute : MonoBehaviour
                 UnityEngine.Debug.Log("Connected.");
             }
 
-            while (position < bufferSize)
-            {            
-                var result = stream.BeginRead(packet_buffer, position, bufferSize - position, null, null);
+            yield return ReadExact(lenBuf, 0, 4);
+            int totalBytes = BitConverter.ToInt32(lenBuf, 0);
+            int remaining = totalBytes - 4;
 
-                while (!result.IsCompleted)
-                    yield return new WaitForEndOfFrame();
-                readBytes = stream.EndRead(result);
-                if (readBytes == 0)
-                {
-                    yield return null;
-                }
+            yield return ReadExact(packet_buffer, 0, remaining);
 
-                position += readBytes;
+            xmin = BitConverter.ToUInt16(packet_buffer, 0); 
+            yminin = BitConverter.ToUInt16(packet_buffer, 2); 
+            bbox_w = BitConverter.ToUInt16(packet_buffer, 4); 
+            bbox_h = BitConverter.ToUInt16(packet_buffer, 6); 
+
+            current_point_count = bbox_h * bbox_w;
+            if (current_point_count == 0)
+            {
+                // instanceCount=0
+                args[1] = 0;
+                argsBuffer.SetData(args);
                 yield return null;
-
+                continue;
             }
 
-                // position zuruecksetzen
-                position = 0;
+            int depth_bytes = current_point_count * 2;
+            int color_bytes = current_point_count * 4;
+            int expected_remaining = header + depth_bytes + color_bytes;
 
-                Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 4), depth_data,0, pixel_count*2);
-                Buffer.BlockCopy(packet_buffer, (pixel_count * 6), bodyIDs, 0, pixel_count);
+            if (remaining != expected_remaining)
+                throw new Exception($"Size mismatch remaining={remaining}, expected={expected_remaining}");
+
+            //while (position < bufferSize)
+            //{            
+            //    var result = stream.BeginRead(packet_buffer, position, bufferSize - position, null, null);
+
+            //    while (!result.IsCompleted)
+            //        yield return new WaitForEndOfFrame();
+            //    readBytes = stream.EndRead(result);
+            //    if (readBytes == 0)
+            //    {
+            //        yield return null;
+            //    }
+
+            //    position += readBytes;
+            //    yield return null;
+
+            //}
+
+            // position zuruecksetzen
+            //position = 0;
+            Buffer.BlockCopy(packet_buffer, 8, depth_data, 0, depth_bytes);
+            Buffer.BlockCopy(packet_buffer, 8 + depth_bytes, original_color, 0, color_bytes);
+            //Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
+            //Buffer.BlockCopy(packet_buffer, (pixel_count * 4), depth_data,0, pixel_count*2);
+            //Buffer.BlockCopy(packet_buffer, (pixel_count * 6), bodyIDs, 0, pixel_count);
 
 
-                yield return new WaitForEndOfFrame();
+            yield return new WaitForEndOfFrame();
+        }
+    }
+    private IEnumerator ReadExact(byte[] buf, int offset, int count)
+    {
+        int readTotal = 0;
+        while (readTotal < count)
+        {
+            var ar = stream.BeginRead(buf, offset + readTotal, count - readTotal, null, null);
+            while (!ar.IsCompleted) yield return null;
+
+            int n = stream.EndRead(ar);
+            if (n <= 0) throw new Exception("TCP disconnected");
+
+            readTotal += n;
         }
     }
 
