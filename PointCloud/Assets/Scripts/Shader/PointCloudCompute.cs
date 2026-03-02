@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using System.Net.Sockets;
 using System;
+using UnityEditor.Sprites;
 
 
 public class PointCloudCompute : MonoBehaviour
@@ -23,11 +24,11 @@ public class PointCloudCompute : MonoBehaviour
     public const int pixel_count = rows*cols;
     //private int bufferSize;
     const int header = 12;
-    const int max_payload = pixel_count * 6 + 12;
+    const int max_payload = pixel_count * 7 + 12;
 
     // Arrays for storing receiving data
     private ushort[] depth_data = new ushort[pixel_count];
-    //private byte[] bodyIDs = new byte[pixel_count];
+    private byte[] bodyIDs = new byte[pixel_count];
     private byte[] original_color = new byte[pixel_count * 4];
     private byte[] lenBuf = new byte[4];
     private int xmin,ymin,bbox_w,bbox_h,current_point_count;
@@ -50,6 +51,7 @@ public class PointCloudCompute : MonoBehaviour
     private Color[] colors = new Color[pixel_count];
 
     public Transform pointCloudRoot;
+    public Texture2D pic;
 
 
     public void OnValidate()
@@ -71,8 +73,8 @@ public class PointCloudCompute : MonoBehaviour
     void Start()
     {
         var cfg = ConfigLoader.Load();
-        ClientIp = cfg.ip;
-        ClientPort = cfg.port;
+        ClientIp = "134.109.192.10";//cfg.ip;
+        ClientPort = 3363;//cfg.port;
         // Initialize TCP relavent Variables
         packet_buffer = new byte[max_payload];
         client = new TcpClient();
@@ -120,35 +122,44 @@ public class PointCloudCompute : MonoBehaviour
             }
             return;
         }
+        //int srcindex = ymin * rows + xmin;
 
-        for (int i = 0; i < current_point_count; i++)
-        {
+        //for (int i = 0; i < current_point_count; i++)
+        //{
             
-                // Recalculate the x and y index
-                int x_pixel = (i % cols) + xmin;
-                int y_pixel = (i / cols) + ymin;
+        //        // Recalculate the x and y index
+        //        int x_pixel = (i % bbox_w) + xmin;
+        //        int y_pixel = (i / bbox_w) + ymin;
+
+        //       if (bodyIDs[i] != 255)
+        //    {
+        //        // Get the real x,y,z value
+        //        float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
+        //        float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
+        //        float y = (y_pixel - cy) * -z / fy;
+
+        //        // Calculate factor value
+        //        meanDepth += z;
+        //        min_y = Mathf.Min(min_y, y); //calculate the min y value, so we can put the human always on the ground
+        //        mean_x += x;
+
+        //        // Write position and color data to the array
+        //        positions[instanceCount] = new Vector4(x * Scale, y * Scale, z, PointSize);
+        //        colors[instanceCount] = new Color(
+        //            original_color[i * 4] / 255.0f,
+        //            original_color[i * 4 + 1] / 255.0f,
+        //            original_color[i * 4 + 2] / 255.0f,
+        //            original_color[i * 4 + 3] / 255.0f);
+
+        //        instanceCount++;
+        //    }
               
-                // Get the real x,y,z value
-                float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
-                float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
-                float y = (y_pixel - cy) * -z / fy;
-
-                // Calculate factor value
-                meanDepth += z;
-                min_y = Mathf.Min(min_y, y); //calculate the min y value, so we can put the human always on the ground
-                mean_x += x;
                 
-                // Write position and color data to the array
-                positions[instanceCount] = new Vector4(x * Scale, y * Scale, z, PointSize);
-                colors[instanceCount] = new Color(
-                    original_color[i * 4] / 255.0f, 
-                    original_color[i * 4 + 1] / 255.0f, 
-                    original_color[i * 4 + 2] / 255.0f, 
-                    original_color[i * 4 + 3] / 255.0f);
-
-                instanceCount++;
             
-        }
+        //}
+
+
+        Debug.Log(instanceCount);
         // Set factor and position/color buffer, so it can be give to the shader
         material.SetVector("factor", new Vector4(min_y, mean_x / Convert.ToSingle(instanceCount), 0.0f, meanDepth / Convert.ToSingle(instanceCount)));
         positionsBuffer.SetData(positions,0,0,instanceCount);
@@ -184,7 +195,7 @@ public class PointCloudCompute : MonoBehaviour
             {
                 UnityEngine.Debug.Log($"Connecting to {ClientIp}:{ClientPort}...");
                 client.Connect(ClientIp, ClientPort);
-                client.ReceiveBufferSize = bufferSize;
+                client.ReceiveBufferSize = max_payload;
                 stream = client.GetStream();
                 UnityEngine.Debug.Log("Connected.");
             }
@@ -196,9 +207,11 @@ public class PointCloudCompute : MonoBehaviour
             yield return ReadExact(packet_buffer, 0, remaining);
 
             xmin = BitConverter.ToUInt16(packet_buffer, 0); 
-            yminin = BitConverter.ToUInt16(packet_buffer, 2); 
+            ymin = BitConverter.ToUInt16(packet_buffer, 2); 
             bbox_w = BitConverter.ToUInt16(packet_buffer, 4); 
-            bbox_h = BitConverter.ToUInt16(packet_buffer, 6); 
+            bbox_h = BitConverter.ToUInt16(packet_buffer, 6);
+
+            //Debug.Log($"xmin = {xmin}, ymin = {ymin},w = {bbox_w},h = {bbox_h}");
 
             current_point_count = bbox_h * bbox_w;
             if (current_point_count == 0)
@@ -212,35 +225,33 @@ public class PointCloudCompute : MonoBehaviour
 
             int depth_bytes = current_point_count * 2;
             int color_bytes = current_point_count * 4;
-            int expected_remaining = header + depth_bytes + color_bytes;
+            int expected_remaining = header + depth_bytes + color_bytes -4;
 
             if (remaining != expected_remaining)
                 throw new Exception($"Size mismatch remaining={remaining}, expected={expected_remaining}");
+            
+            int off = 8;
+         
 
-            //while (position < bufferSize)
-            //{            
-            //    var result = stream.BeginRead(packet_buffer, position, bufferSize - position, null, null);
+            for (int i = 0; i < bbox_h; i++) 
+            {
+                int srcindex = (ymin + i) * rows + xmin;
+                Buffer.BlockCopy(packet_buffer, off, depth_data, srcindex*2, bbox_w * 2);
+                off += bbox_w * 2;
 
-            //    while (!result.IsCompleted)
-            //        yield return new WaitForEndOfFrame();
-            //    readBytes = stream.EndRead(result);
-            //    if (readBytes == 0)
-            //    {
-            //        yield return null;
-            //    }
-
-            //    position += readBytes;
-            //    yield return null;
-
-            //}
-
-            // position zuruecksetzen
-            //position = 0;
-            Buffer.BlockCopy(packet_buffer, 8, depth_data, 0, depth_bytes);
-            Buffer.BlockCopy(packet_buffer, 8 + depth_bytes, original_color, 0, color_bytes);
-            //Buffer.BlockCopy(packet_buffer, 0, original_color, 0, pixel_count * 4);
-            //Buffer.BlockCopy(packet_buffer, (pixel_count * 4), depth_data,0, pixel_count*2);
-            //Buffer.BlockCopy(packet_buffer, (pixel_count * 6), bodyIDs, 0, pixel_count);
+            }
+            for (int i = 0; i < bbox_h; i++)
+            {
+                int srcIndex = ((ymin + i) * rows + xmin) * 4;
+                Buffer.BlockCopy(packet_buffer, off, original_color, srcIndex, bbox_w * 4);
+                off += bbox_w * 4;
+            }
+            for (int i = 0; i < bbox_h; i++)
+            {
+                int srcIndex = (ymin + i) * rows + xmin;
+                Buffer.BlockCopy(packet_buffer, off, bodyIDs, srcIndex, bbox_w);
+                off += bbox_w * 4;
+            }
 
 
             yield return new WaitForEndOfFrame();

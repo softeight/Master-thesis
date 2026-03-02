@@ -14,7 +14,12 @@ using System.Diagnostics;
 namespace KinectClient
 {
     class Program
-    {      
+    {
+        static int GetIndex(int x, int y, int width)
+        {
+            return y * width + x;
+        }
+
         static void Main(string[] args)
         {
             int port = 3363;
@@ -40,10 +45,10 @@ namespace KinectClient
             //create empty array to store 
             const int rows = 512;
             const int cols = 424;
-            int xmin = int.MaxValue;
-            int xmax = int.MinValue;
-            int ymin = int.MaxValue;
-            int ymax = int.MinValue;
+            int xmin;
+            int xmax;
+            int ymin;
+            int ymax;
             int header = 12;
             int pixel_count = rows * cols;
             byte[] color_data = new byte[1920 * 1080 * 4];          
@@ -51,7 +56,7 @@ namespace KinectClient
             byte[] body_index_data = new byte[pixel_count];
             byte[] converted_color_data = new byte[pixel_count * 4];
 
-            byte[] packet = new byte[(6 * pixel_count) + 12];
+            byte[] packet = new byte[(7 * pixel_count) + header];
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
            
 
@@ -78,6 +83,11 @@ namespace KinectClient
 
                 while (true)
                 {
+                    xmin = int.MaxValue;
+                    xmax = int.MinValue;
+                    ymin = int.MaxValue;
+                    ymax = int.MinValue;
+
                     //getting depth&color&bodyIdx frame from kinect
                     MultiSourceFrame msf = reader.AcquireLatestFrame();
                     if (msf == null)
@@ -104,46 +114,62 @@ namespace KinectClient
                         if (bif != null)
                         {
                             bif.CopyFrameDataToArray(body_index_data);
+                            
                         }
                     }
+                    
+                    
 
                     mapper = kinectSensor.CoordinateMapper;
                     mapper.MapDepthFrameToColorSpace(depth_data, colorSpacePoints);
 
-                    //bool hasBody = false;
-                    Parallel.For(0, pixel_count, i =>
+                    // Get the xmin,max,ymin,max
+                    for (int i = 0; i < pixel_count; i++)
                     {
                         if (body_index_data[i] != 255)
                         {
-                            //hasBody = true;
-                            int x = i % rows;
+
+                            int x = i % rows;                          
                             int y = i / rows;
-                            if (x < xmin) xmin = x;
-                            if (x > xmax) xmax = x;
-                            if (y < ymin) ymin = y;
-                            if (y > ymax) ymax = y;
+                            if (x < xmin) 
+                            { 
+                                xmin = x;                              
+                            }
+
+                            if (x > xmax) 
+                            {
+                                xmax = x;
+                            }
+                            
+                            if (y < ymin) 
+                            {
+                                ymin = y;
+                            }
+                            
+                            if (y > ymax) 
+                            {
+                                ymax = y;
+                            }
+                            
                         }
-                    });
-                    int bbox_w = xmax - xmin + 1;
-                    int bbox_h = ymax - ymin + 1;
-                    int payloadBytes = bbox_w * bbox_h * 6;
-                    int totalBytes = header + payloadBytes;
-        
-
-                    Buffer.BlockCopy(BitConverter.GetBytes(totalBytes), 0, packet, 0, 4);
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin), 0, packet, 4, 2); 
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin), 0, packet, 6, 2); 
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_w), 0, packet, 8, 2); 
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_h), 0, packet, 10, 2);
-
-                    for (int i = 0; i < bbox_h; i++)
-                    {
-                        int srcIndex = (ymin + i) * rows + xmin;
-                        Buffer.BlockCopy(depth_data, srcIndex * 2, packet, 12, bbox_w * 2);
-            
                     }
 
-                    //writing each pixel data into packet buffer
+                    bool hasBody = (xmax >= xmin) && (ymax >= xmax);
+                    int bbox_w = hasBody ? (xmax - xmin + 1) : 0;
+                    int bbox_h = hasBody ? (ymax - ymin + 1) : 0;
+                    int payloadBytes = bbox_w * bbox_h * 7;
+                    int totalBytes = header + payloadBytes;
+
+
+                    Buffer.BlockCopy(BitConverter.GetBytes(totalBytes),     0, packet, 0, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin),   0, packet, 4, 2);
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin),   0, packet, 6, 2);
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_w), 0, packet, 8, 2);
+                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_h), 0, packet, 10, 2);
+
+
+
+                    //convert color data from 1920*1080 to 525*424
                     Parallel.For(0, pixel_count, i =>
                     {
                         int converted_color_index = i * 4;
@@ -171,16 +197,43 @@ namespace KinectClient
                         }
                     });
 
-                    for (int i = 0; i < bbox_h; i++)
+                    //for (int y = ymin; y < ymax; ++y)
+                    //{
+                    //    int srcIndex = GetIndex(xmin, y, rows);
+                    //    int dstIndex = GetIndex(0, y - ymin, bbox_w);
+
+                    //}
+
+
+                    // copy depth and color data inside of the bbox into the packet
+                    if (hasBody)
                     {
-                        int srcByte = ((ymin + i) * rows + xmin) * 4;
-                        Buffer.BlockCopy(converted_color_data, srcByte, packet, (12 + bbox_w * 2), bbox_w * 4);
+                        int off = 12;
+
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            int srcIndex = (ymin + i) * rows + xmin;
+                            Buffer.BlockCopy(depth_data, srcIndex * 2, packet, off, bbox_w * 2);
+                            off += bbox_w * 2;
+
+                        }
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            int srcIndex = ((ymin + i) * rows + xmin) * 4;
+                            Buffer.BlockCopy(converted_color_data, srcIndex, packet, off, bbox_w * 4);
+                            off += bbox_w * 4;
+
+                        }
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            int srcIndex = (ymin + i) * rows + xmin;
+                            Buffer.BlockCopy(body_index_data, srcIndex, packet, off, bbox_w);
+                            off += bbox_w;
+
+                        }
+                        
                     }
-
-                    //Buffer.BlockCopy(converted_color_data, 0, packet_buffer, 0, pixel_count * 4);
-                    //Buffer.BlockCopy(depth_data, 0, packet_buffer, (pixel_count * 4), pixel_count * 2);
-                    //Buffer.BlockCopy(body_index_data, 0, packet_buffer, (pixel_count * 6), pixel_count);
-
+                   // Console.WriteLine($"hasbody={hasBody},bbox= {bbox_h}h,{bbox_w}w,xmin={xmin}, xmax={xmax}");
 
                     try
                     {
