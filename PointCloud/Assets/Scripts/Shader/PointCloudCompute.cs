@@ -21,17 +21,16 @@ public class PointCloudCompute : MonoBehaviour
     private byte[] packet_buffer;
     public const int rows = 424;
     public const int cols = 512;
-    public const int pixel_count = rows*cols;
-    //private int bufferSize;
-    const int header = 12;
+    public const int pixel_count = rows*cols; // Total pixel count:512*424
+
+    const int header = 12; // header of the transmitting packet
     const int max_payload = pixel_count * 7 + 12;
 
     // Arrays for storing receiving data
     private ushort[] depth_data = new ushort[pixel_count];
     private byte[] bodyIDs = new byte[pixel_count];
     private byte[] original_color = new byte[pixel_count * 4];
-    private byte[] lenBuf = new byte[4];
-    private int xmin,ymin,bbox_w,bbox_h,current_point_count;
+    private int xmin,ymin,bbox_w,bbox_h,current_point_count, totalBytes; //? is that problematic to have int 32
 
     // Variables for Callibration of Kinect Camera
     float cx = 262.72f;
@@ -107,7 +106,7 @@ public class PointCloudCompute : MonoBehaviour
         int instanceCount = 0;
         float meanDepth = 0.0f;
         float min_y = float.MaxValue;
-        float mean_x = 0.0f;
+        float mean_x = 0.0f;//?
 
         if (current_point_count == 0)
         {
@@ -122,41 +121,47 @@ public class PointCloudCompute : MonoBehaviour
             }
             return;
         }
-        //int srcindex = ymin * rows + xmin;
+        
 
-        //for (int i = 0; i < current_point_count; i++)
-        //{
-            
-        //        // Recalculate the x and y index
-        //        int x_pixel = (i % bbox_w) + xmin;
-        //        int y_pixel = (i / bbox_w) + ymin;
+        for (int i = 0; i < bbox_h; i++)
+        {
+            for (int j = 0; j < bbox_w; j++)
+            {
+                int x_pixel = xmin + j;
+                int y_pixel = ymin + i;
 
-        //       if (bodyIDs[i] != 255)
-        //    {
-        //        // Get the real x,y,z value
-        //        float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
-        //        float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
-        //        float y = (y_pixel - cy) * -z / fy;
+                int index = y_pixel * rows + x_pixel;
 
-        //        // Calculate factor value
-        //        meanDepth += z;
-        //        min_y = Mathf.Min(min_y, y); //calculate the min y value, so we can put the human always on the ground
-        //        mean_x += x;
+                if (bodyIDs[i] != 255)
+                {
 
-        //        // Write position and color data to the array
-        //        positions[instanceCount] = new Vector4(x * Scale, y * Scale, z, PointSize);
-        //        colors[instanceCount] = new Color(
-        //            original_color[i * 4] / 255.0f,
-        //            original_color[i * 4 + 1] / 255.0f,
-        //            original_color[i * 4 + 2] / 255.0f,
-        //            original_color[i * 4 + 3] / 255.0f);
+                    // Get the real x,y,z value
+                    float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
+                    float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
+                    float y = (y_pixel - cy) * -z / fy;
 
-        //        instanceCount++;
-        //    }
-              
-                
-            
-        //}
+                    // Calculate factor value
+                    meanDepth += z;
+                    min_y = Mathf.Min(min_y, y); //calculate the min y value, so we can put the human always on the ground
+                    mean_x += x;
+
+                    // Write position and color data to the array
+                    positions[instanceCount] = new Vector4(x * Scale, y * Scale, z, PointSize);
+                    colors[instanceCount] = new Color(
+                        original_color[index * 4] / 255.0f,
+                        original_color[index * 4 + 1] / 255.0f,
+                        original_color[index * 4 + 2] / 255.0f,
+                        original_color[index * 4 + 3] / 255.0f);
+                   
+                    instanceCount++;
+
+
+                }
+
+            }
+                                
+               
+        }
 
 
         Debug.Log(instanceCount);
@@ -185,9 +190,7 @@ public class PointCloudCompute : MonoBehaviour
     }
 
     private IEnumerator ReadFrame()
-    {
-        //int position = 0;
-        //int readBytes = 0;
+    {  
 
         while (true)
         {
@@ -200,43 +203,49 @@ public class PointCloudCompute : MonoBehaviour
                 UnityEngine.Debug.Log("Connected.");
             }
 
-            yield return ReadExact(lenBuf, 0, 4);
-            int totalBytes = BitConverter.ToInt32(lenBuf, 0);
-            int remaining = totalBytes - 4;
+            // read the header from the packet, to know how many valid total bytes there are
+            yield return ReadExact(packet_buffer, 0, 12);
+            totalBytes = BitConverter.ToInt32(packet_buffer, 0);
+            xmin = BitConverter.ToUInt16(packet_buffer, 4);
+            ymin = BitConverter.ToUInt16(packet_buffer, 6);
+            bbox_w = BitConverter.ToUInt16(packet_buffer, 8);
+            bbox_h = BitConverter.ToUInt16(packet_buffer, 10);
+            // incase that we have weird number of total bytes
+            if (totalBytes < 12)
+            {
+                Debug.LogError($"Invalid packet size: {totalBytes}");
+                yield break;
+            }
+            int remaining = totalBytes - 12;
 
-            yield return ReadExact(packet_buffer, 0, remaining);
+            // continue to read the rest bytes
+            yield return ReadExact(packet_buffer, 12, remaining);
+         
 
-            xmin = BitConverter.ToUInt16(packet_buffer, 0); 
-            ymin = BitConverter.ToUInt16(packet_buffer, 2); 
-            bbox_w = BitConverter.ToUInt16(packet_buffer, 4); 
-            bbox_h = BitConverter.ToUInt16(packet_buffer, 6);
-
+            // this line below is for testing whether there is valid bbox data
             //Debug.Log($"xmin = {xmin}, ymin = {ymin},w = {bbox_w},h = {bbox_h}");
 
+            // the real number of point that need to be draw (inside of the bbox)
             current_point_count = bbox_h * bbox_w;
-            if (current_point_count == 0)
-            {
-                // instanceCount=0
-                args[1] = 0;
-                argsBuffer.SetData(args);
-                yield return null;
-                continue;
-            }
 
-            int depth_bytes = current_point_count * 2;
-            int color_bytes = current_point_count * 4;
-            int expected_remaining = header + depth_bytes + color_bytes -4;
+            //if (current_point_count == 0)
+            //{
+            //    args[1] = 0;
+            //    argsBuffer.SetData(args);
+            //    yield return null;
+            //    continue;
+            //    // is that right?
+            //}         
+         
 
-            if (remaining != expected_remaining)
-                throw new Exception($"Size mismatch remaining={remaining}, expected={expected_remaining}");
-            
-            int off = 8;
+            // offset for writting data to the buffer
+            int off = 12;
          
 
             for (int i = 0; i < bbox_h; i++) 
-            {
-                int srcindex = (ymin + i) * rows + xmin;
-                Buffer.BlockCopy(packet_buffer, off, depth_data, srcindex*2, bbox_w * 2);
+            {   // bc of the bbox, need to write data one line by line
+                int srcindex = ((ymin + i) * rows + xmin)*2;
+                Buffer.BlockCopy(packet_buffer, off, depth_data, srcindex, bbox_w * 2);
                 off += bbox_w * 2;
 
             }
@@ -250,7 +259,7 @@ public class PointCloudCompute : MonoBehaviour
             {
                 int srcIndex = (ymin + i) * rows + xmin;
                 Buffer.BlockCopy(packet_buffer, off, bodyIDs, srcIndex, bbox_w);
-                off += bbox_w * 4;
+                off += bbox_w;
             }
 
 
@@ -262,10 +271,10 @@ public class PointCloudCompute : MonoBehaviour
         int readTotal = 0;
         while (readTotal < count)
         {
-            var ar = stream.BeginRead(buf, offset + readTotal, count - readTotal, null, null);
-            while (!ar.IsCompleted) yield return null;
+            var result = stream.BeginRead(buf, offset + readTotal, count - readTotal, null, null);
+            while (!result.IsCompleted) yield return null;
 
-            int n = stream.EndRead(ar);
+            int n = stream.EndRead(result);
             if (n <= 0) throw new Exception("TCP disconnected");
 
             readTotal += n;

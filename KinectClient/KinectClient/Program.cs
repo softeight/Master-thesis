@@ -15,10 +15,10 @@ namespace KinectClient
 {
     class Program
     {
-        static int GetIndex(int x, int y, int width)
-        {
-            return y * width + x;
-        }
+        //static int GetIndex(int x, int y, int width)
+        //{
+        //    return y * width + x;
+        //}
 
         static void Main(string[] args)
         {
@@ -160,7 +160,7 @@ namespace KinectClient
                     int payloadBytes = bbox_w * bbox_h * 7;
                     int totalBytes = header + payloadBytes;
 
-
+                    // block copy the header data to the tcp packet
                     Buffer.BlockCopy(BitConverter.GetBytes(totalBytes),     0, packet, 0, 4);
                     Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin),   0, packet, 4, 2);
                     Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin),   0, packet, 6, 2);
@@ -212,8 +212,8 @@ namespace KinectClient
 
                         for (int i = 0; i < bbox_h; i++)
                         {
-                            int srcIndex = (ymin + i) * rows + xmin;
-                            Buffer.BlockCopy(depth_data, srcIndex * 2, packet, off, bbox_w * 2);
+                            int srcIndex = ((ymin + i) * rows + xmin) * 2;
+                            Buffer.BlockCopy(depth_data, srcIndex, packet, off, bbox_w * 2);
                             off += bbox_w * 2;
 
                         }
