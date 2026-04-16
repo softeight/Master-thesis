@@ -3,6 +3,8 @@ using UnityEngine;
 using System.Net.Sockets;
 using System;
 using UnityEditor.Sprites;
+using Unity.VisualScripting;
+using System.Diagnostics.Eventing.Reader;
 
 
 public class PointCloudCompute : MonoBehaviour
@@ -19,18 +21,20 @@ public class PointCloudCompute : MonoBehaviour
 
     // Variables for TCP packet
     private byte[] packet_buffer;
-    public const int rows = 424;
-    public const int cols = 512;
+    public const int rows = 512;
+    public const int cols = 424;
     public const int pixel_count = rows*cols; // Total pixel count:512*424
 
-    const int header = 12; // header of the transmitting packet
-    const int max_payload = pixel_count * 7 + 12;
+    const int headerSize = 20; // header of the transmitting packet
+    const int max_payload = pixel_count * 7 + headerSize;
 
     // Arrays for storing receiving data
     private ushort[] depth_data = new ushort[pixel_count];
     private byte[] bodyIDs = new byte[pixel_count];
     private byte[] original_color = new byte[pixel_count * 4];
-    private int xmin,ymin,bbox_w,bbox_h,current_point_count, totalBytes; //? is that problematic to have int 32
+    private int xmin,ymin,bbox_w,bbox_h,current_point_count; //? is that problematic to have int 32
+    private DateTime? lastFrame = null;
+    private int maxLatency = 100; // in milliseconds.
 
     // Variables for Callibration of Kinect Camera
     float cx = 262.72f;
@@ -77,6 +81,7 @@ public class PointCloudCompute : MonoBehaviour
         // Initialize TCP relavent Variables
         packet_buffer = new byte[max_payload];
         client = new TcpClient();
+        lastFrame = null;
 
         // Create args, color, positions Buffer
         argsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
@@ -132,11 +137,11 @@ public class PointCloudCompute : MonoBehaviour
 
                 int index = y_pixel * rows + x_pixel;
 
-                if (bodyIDs[i] != 255)
+                if (bodyIDs[index] != 255)
                 {
 
                     // Get the real x,y,z value
-                    float z = Convert.ToSingle(depth_data[i]) * 0.001f; // Convert to meters.
+                    float z = Convert.ToSingle(depth_data[index]) * 0.001f; // Convert to meters.
                     float x = (x_pixel - cx) * -z / fx; // calibrate to the middle
                     float y = (y_pixel - cy) * -z / fy;
 
@@ -164,7 +169,7 @@ public class PointCloudCompute : MonoBehaviour
         }
 
 
-        Debug.Log(instanceCount);
+        //Debug.Log(instanceCount);
         // Set factor and position/color buffer, so it can be give to the shader
         material.SetVector("factor", new Vector4(min_y, mean_x / Convert.ToSingle(instanceCount), 0.0f, meanDepth / Convert.ToSingle(instanceCount)));
         positionsBuffer.SetData(positions,0,0,instanceCount);
@@ -203,65 +208,94 @@ public class PointCloudCompute : MonoBehaviour
                 UnityEngine.Debug.Log("Connected.");
             }
 
+            // Reset bounding box, if no frame has arrived for more than 5 seconds.
+            if (lastFrame.HasValue && (DateTime.Now - lastFrame.Value).TotalSeconds > 5)
+            {
+                bbox_w = bbox_h = 0;
+                ymin = xmin = 0;
+            }
+
             // read the header from the packet, to know how many valid total bytes there are
-            yield return ReadExact(packet_buffer, 0, 12);
-            totalBytes = BitConverter.ToInt32(packet_buffer, 0);
-            xmin = BitConverter.ToUInt16(packet_buffer, 4);
-            ymin = BitConverter.ToUInt16(packet_buffer, 6);
-            bbox_w = BitConverter.ToUInt16(packet_buffer, 8);
-            bbox_h = BitConverter.ToUInt16(packet_buffer, 10);
-            // incase that we have weird number of total bytes
-            if (totalBytes < 12)
+            yield return ReadExact(packet_buffer, 0, headerSize);
+            var payloadSize = BitConverter.ToInt32(packet_buffer, 0);
+            int offset = sizeof(int); // payloadSize
+            int hxmin = BitConverter.ToInt16(packet_buffer, 4);
+            offset += sizeof(ushort);
+            int hymin = BitConverter.ToInt16(packet_buffer, 6);
+            offset += sizeof(ushort);
+            int hbbox_w = BitConverter.ToInt16(packet_buffer, 8);
+            offset += sizeof(ushort);
+            int hbbox_h = BitConverter.ToInt16(packet_buffer, 10);
+            offset += sizeof(ushort);
+            var timeStamp = DateTime.FromBinary(BitConverter.ToInt64(packet_buffer, 12));
+            offset += sizeof(Int64);
+
+            if (payloadSize <= 0)
             {
-                Debug.LogError($"Invalid packet size: {totalBytes}");
-                yield break;
+                // No body submitted, so there's nothing to draw.
+                bbox_w = bbox_h = 0;
+                ymin = xmin = 0;
             }
-            int remaining = totalBytes - 12;
-
-            // continue to read the rest bytes
-            yield return ReadExact(packet_buffer, 12, remaining);
-         
-
-            // this line below is for testing whether there is valid bbox data
-            //Debug.Log($"xmin = {xmin}, ymin = {ymin},w = {bbox_w},h = {bbox_h}");
-
-            // the real number of point that need to be draw (inside of the bbox)
-            current_point_count = bbox_h * bbox_w;
-
-            //if (current_point_count == 0)
-            //{
-            //    args[1] = 0;
-            //    argsBuffer.SetData(args);
-            //    yield return null;
-            //    continue;
-            //    // is that right?
-            //}         
-         
-
-            // offset for writting data to the buffer
-            int off = 12;
-         
-
-            for (int i = 0; i < bbox_h; i++) 
-            {   // bc of the bbox, need to write data one line by line
-                int srcindex = ((ymin + i) * rows + xmin)*2;
-                Buffer.BlockCopy(packet_buffer, off, depth_data, srcindex, bbox_w * 2);
-                off += bbox_w * 2;
-
-            }
-            for (int i = 0; i < bbox_h; i++)
+            else 
             {
-                int srcIndex = ((ymin + i) * rows + xmin) * 4;
-                Buffer.BlockCopy(packet_buffer, off, original_color, srcIndex, bbox_w * 4);
-                off += bbox_w * 4;
-            }
-            for (int i = 0; i < bbox_h; i++)
-            {
-                int srcIndex = (ymin + i) * rows + xmin;
-                Buffer.BlockCopy(packet_buffer, off, bodyIDs, srcIndex, bbox_w);
-                off += bbox_w;
-            }
+                // continue to read the rest bytes
+                yield return ReadExact(packet_buffer, offset, payloadSize);
 
+                if (lastFrame == null)
+                    lastFrame = timeStamp; // NOTE: First frame is dropped. Should be fixed.
+                else
+                {
+                    // Get time difference and discard frames that took too long.
+                    var latency = timeStamp - lastFrame.Value;
+                    lastFrame = timeStamp;
+
+                    // Only parse frame if latency is below threshold.
+                    if (latency.TotalMilliseconds <= maxLatency)
+                    {
+                        bbox_h = hbbox_h;
+                        bbox_w = hbbox_w;
+                        xmin = hxmin;
+                        ymin = hymin;
+
+                        // the real number of point that need to be draw (inside of the bbox)
+                        current_point_count = bbox_h * bbox_w;
+
+                        // this line below is for testing whether there is valid bbox data
+                        //Debug.Log($"xmin = {xmin}, ymin = {ymin},w = {bbox_w},h = {bbox_h}, current_point = {current_point_count}");
+
+                        //if (current_point_count == 0)
+                        //{
+                        //    args[1] = 0;
+                        //    argsBuffer.SetData(args);
+                        //    yield return null;
+                        //    continue;
+                        //   
+                        //}         
+
+
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            // bc of the bbox, need to write data one line by line
+                            int srcindex = ((ymin + i) * rows + xmin) * 2;
+                            Buffer.BlockCopy(packet_buffer, offset, depth_data, srcindex, bbox_w * 2);
+                            offset += bbox_w * 2;
+
+                        }
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            int srcIndex = ((ymin + i) * rows + xmin) * 4;
+                            Buffer.BlockCopy(packet_buffer, offset, original_color, srcIndex, bbox_w * 4);
+                            offset += bbox_w * 4;
+                        }
+                        for (int i = 0; i < bbox_h; i++)
+                        {
+                            int srcIndex = (ymin + i) * rows + xmin;
+                            Buffer.BlockCopy(packet_buffer, offset, bodyIDs, srcIndex, bbox_w);
+                            offset += bbox_w;
+                        }
+                    }
+                }
+            }
 
             yield return new WaitForEndOfFrame();
         }

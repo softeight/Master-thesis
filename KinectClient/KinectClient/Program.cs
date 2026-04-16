@@ -49,14 +49,13 @@ namespace KinectClient
             int xmax;
             int ymin;
             int ymax;
-            int header = 12;
             int pixel_count = rows * cols;
             byte[] color_data = new byte[1920 * 1080 * 4];          
             ushort[] depth_data = new ushort[pixel_count];
             byte[] body_index_data = new byte[pixel_count];
             byte[] converted_color_data = new byte[pixel_count * 4];
 
-            byte[] packet = new byte[(7 * pixel_count) + header];
+            byte[] packet = new byte[(7 * pixel_count) + 20]; // header size is 20 bytes.
             ColorSpacePoint[] colorSpacePoints = new ColorSpacePoint[pixel_count];
            
 
@@ -155,95 +154,97 @@ namespace KinectClient
                     }
 
                     bool hasBody = (xmax >= xmin) && (ymax >= xmax);
-                    int bbox_w = hasBody ? (xmax - xmin + 1) : 0;
-                    int bbox_h = hasBody ? (ymax - ymin + 1) : 0;
-                    int payloadBytes = bbox_w * bbox_h * 7;
-                    int totalBytes = header + payloadBytes;
 
-                    // block copy the header data to the tcp packet
-                    Buffer.BlockCopy(BitConverter.GetBytes(totalBytes),     0, packet, 0, 4);
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin),   0, packet, 4, 2);
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin),   0, packet, 6, 2);
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_w), 0, packet, 8, 2);
-                    Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_h), 0, packet, 10, 2);
-
-
-
-                    //convert color data from 1920*1080 to 525*424
-                    Parallel.For(0, pixel_count, i =>
-                    {
-                        int converted_color_index = i * 4;
-
-                        int color_x = (int)Math.Floor(colorSpacePoints[i].X + 0.5);
-                        int color_y = (int)Math.Floor(colorSpacePoints[i].Y + 0.5);
-
-                        if (color_x >= 0 && (color_x < 1920)
-                            && (color_y >= 0) && (color_y < 1080))
-                        {
-                            int color_index = (color_y * 1920 + color_x) * 4;
-
-                            converted_color_data[converted_color_index] = color_data[color_index];
-                            converted_color_data[converted_color_index + 1] = color_data[color_index + 1];
-                            converted_color_data[converted_color_index + 2] = color_data[color_index + 2];
-                            converted_color_data[converted_color_index + 3] = color_data[color_index + 3];
-                        }
-                        else
-                        {
-                            converted_color_data[converted_color_index] = 0;
-                            converted_color_data[converted_color_index + 1] = 0;
-                            converted_color_data[converted_color_index + 2] = 0;
-                            converted_color_data[converted_color_index + 3] = 255;
-
-                        }
-                    });
-
-                    //for (int y = ymin; y < ymax; ++y)
-                    //{
-                    //    int srcIndex = GetIndex(xmin, y, rows);
-                    //    int dstIndex = GetIndex(0, y - ymin, bbox_w);
-
-                    //}
-
-
-                    // copy depth and color data inside of the bbox into the packet
                     if (hasBody)
                     {
-                        int off = 12;
+                        int bbox_w = hasBody ? (xmax - xmin) : 0;
+                        int bbox_h = hasBody ? (ymax - ymin) : 0;
+                        int payloadBytes = bbox_w * bbox_h * 7;
+                        int offset = 0;
 
+                        // block copy the header data to the tcp packet
+                        Buffer.BlockCopy(BitConverter.GetBytes(payloadBytes), 0, packet, 0, sizeof(int));
+                        offset += sizeof(int);
+                        Buffer.BlockCopy(BitConverter.GetBytes((ushort)xmin), 0, packet, 4, sizeof(ushort));
+                        offset += sizeof(ushort);
+                        Buffer.BlockCopy(BitConverter.GetBytes((ushort)ymin), 0, packet, 6, sizeof(ushort));
+                        offset += sizeof(ushort);
+                        Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_w), 0, packet, 8, sizeof(ushort));
+                        offset += sizeof(ushort);
+                        Buffer.BlockCopy(BitConverter.GetBytes((ushort)bbox_h), 0, packet, 10, sizeof(ushort));
+                        offset += sizeof(ushort);
+                        Buffer.BlockCopy(BitConverter.GetBytes(DateTime.Now.ToBinary()), 0, packet, 12, sizeof(long));
+                        offset += sizeof(long);
+                        var totalBytes = offset + payloadBytes;
+
+                        //convert color data from 1920*1080 to 525*424
+                        Parallel.For(0, pixel_count, i =>
+                        {
+                            int converted_color_index = i * 4;
+
+                            int color_x = (int)Math.Floor(colorSpacePoints[i].X + 0.5);
+                            int color_y = (int)Math.Floor(colorSpacePoints[i].Y + 0.5);
+
+                            if (color_x >= 0 && (color_x < 1920)
+                                && (color_y >= 0) && (color_y < 1080))
+                            {
+                                int color_index = (color_y * 1920 + color_x) * 4;
+
+                                converted_color_data[converted_color_index] = color_data[color_index];
+                                converted_color_data[converted_color_index + 1] = color_data[color_index + 1];
+                                converted_color_data[converted_color_index + 2] = color_data[color_index + 2];
+                                converted_color_data[converted_color_index + 3] = color_data[color_index + 3];
+                            }
+                            else
+                            {
+                                converted_color_data[converted_color_index] = 0;
+                                converted_color_data[converted_color_index + 1] = 0;
+                                converted_color_data[converted_color_index + 2] = 0;
+                                converted_color_data[converted_color_index + 3] = 255;
+
+                            }
+                        });
+
+
+
+                        // copy depth and color data inside of the bbox into the packet
                         for (int i = 0; i < bbox_h; i++)
                         {
                             int srcIndex = ((ymin + i) * rows + xmin) * 2;
-                            Buffer.BlockCopy(depth_data, srcIndex, packet, off, bbox_w * 2);
-                            off += bbox_w * 2;
+                            Buffer.BlockCopy(depth_data, srcIndex, packet, offset, bbox_w * 2);
+                            offset += bbox_w * 2;
 
                         }
                         for (int i = 0; i < bbox_h; i++)
                         {
                             int srcIndex = ((ymin + i) * rows + xmin) * 4;
-                            Buffer.BlockCopy(converted_color_data, srcIndex, packet, off, bbox_w * 4);
-                            off += bbox_w * 4;
+                            Buffer.BlockCopy(converted_color_data, srcIndex, packet, offset, bbox_w * 4);
+                            offset += bbox_w * 4;
 
                         }
                         for (int i = 0; i < bbox_h; i++)
                         {
                             int srcIndex = (ymin + i) * rows + xmin;
-                            Buffer.BlockCopy(body_index_data, srcIndex, packet, off, bbox_w);
-                            off += bbox_w;
+                            Buffer.BlockCopy(body_index_data, srcIndex, packet, offset, bbox_w);
+                            offset += bbox_w;
 
                         }
-                        
-                    }
-                   // Console.WriteLine($"hasbody={hasBody},bbox= {bbox_h}h,{bbox_w}w,xmin={xmin}, xmax={xmax}");
 
-                    try
-                    {
-                        ns.Write(packet, 0, totalBytes);
-                        ns.Flush();
-                    }
-                    catch (System.IO.IOException ex)
-                    {
-                        Console.WriteLine("Client disconnected.");
-                        break;
+
+#if DEBUG
+                        Console.WriteLine($"hasbody={hasBody},bbox= {bbox_h}h,{bbox_w}w,xmin={xmin}, xmax={xmax}");
+#endif
+
+                        try
+                        {
+                            ns.Write(packet, 0, totalBytes);
+                            ns.Flush();
+                        }
+                        catch (System.IO.IOException ex)
+                        {
+                            Console.WriteLine("Client disconnected.");
+                            break;
+                        }
                     }
 
                     System.Threading.Thread.Sleep(1000 / 24);
