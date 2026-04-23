@@ -22,8 +22,9 @@ namespace KinectClient
 
         static void Main(string[] args)
         {
+            // default for the computer in 103
             int port = 3363;
-            string ip = "134.109.192.10";
+            string ip = "127.0.0.1";
 
             if (args.Length == 2)
             {

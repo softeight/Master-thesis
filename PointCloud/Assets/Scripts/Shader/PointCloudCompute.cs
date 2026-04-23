@@ -2,10 +2,8 @@ using System.Collections;
 using UnityEngine;
 using System.Net.Sockets;
 using System;
-using UnityEditor.Sprites;
 using Unity.VisualScripting;
 using System.Diagnostics.Eventing.Reader;
-
 
 public class PointCloudCompute : MonoBehaviour
 {
@@ -17,7 +15,7 @@ public class PointCloudCompute : MonoBehaviour
     private TcpClient client;
     private NetworkStream stream;
     public string ClientIp;
-    public int ClientPort;
+    public ushort ClientPort;
 
     // Variables for TCP packet
     private byte[] packet_buffer;
@@ -56,6 +54,8 @@ public class PointCloudCompute : MonoBehaviour
     public Transform pointCloudRoot;
     public Texture2D pic;
 
+    private long lastPacketDataSize = 0;
+    private DateTime lastPacketDataSizeTime = DateTime.Now;
 
     public void OnValidate()
     {
@@ -76,8 +76,8 @@ public class PointCloudCompute : MonoBehaviour
     void Start()
     {
         var cfg = ConfigLoader.Load();
-        ClientIp = "134.109.192.10";//cfg.ip;
-        ClientPort = 3363;//cfg.port;
+        ClientIp = cfg.ip;//"134.109.192.10";
+        ClientPort = cfg.port;//3363;
         // Initialize TCP relavent Variables
         packet_buffer = new byte[max_payload];
         client = new TcpClient();
@@ -229,6 +229,17 @@ public class PointCloudCompute : MonoBehaviour
             offset += sizeof(ushort);
             var timeStamp = DateTime.FromBinary(BitConverter.ToInt64(packet_buffer, 12));
             offset += sizeof(Int64);
+
+#if UNITY_EDITOR
+            lastPacketDataSize += payloadSize + 20;
+
+            if (DateTime.Now - lastPacketDataSizeTime >= TimeSpan.FromSeconds(1))
+            {
+                Debug.Log(String.Format("Data received: {0} Mb", Convert.ToSingle(lastPacketDataSize) / 1024.0 / 1024.0));
+                lastPacketDataSizeTime = DateTime.Now;
+                lastPacketDataSize = 0;
+            }
+#endif
 
             if (payloadSize <= 0)
             {

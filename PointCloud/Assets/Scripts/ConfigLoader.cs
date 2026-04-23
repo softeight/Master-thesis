@@ -7,7 +7,10 @@ using System.IO;
 public class NetworkConfig 
 {
     public string ip = "134.109.192.80";
-    public int port = 3363;
+    public ushort port = 3363;
+    public string voiceHostIp = "134.109.192.10";
+    public ushort voiceHostPort = 7777;
+
 }
 
 public static class ConfigLoader 
